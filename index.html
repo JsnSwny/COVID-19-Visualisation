@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://d3js.org/d3-geo-projection.v3.min.js"></script>
+    <style>
+      .country {
+        fill: #9f9f9f;
+        cursor: pointer;
+      }
+      .country:hover {
+        fill: #d04b4b;
+      }
+      .map {
+        background-color: green;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="map">
+      <svg id="my_dataviz" width="500" height="400"></svg>
+    </div>
+
+    <div id="my_graph"></div>
+    <script>
+      d3.csv("cases.csv").then((data) => {
+        // The svg
+        const svg = d3.select("svg"),
+          width = +svg.attr("width"),
+          height = +svg.attr("height");
+
+        const projection = d3
+          .geoNaturalEarth1()
+          // .center([7, 31]) // GPS of location to zoom on
+          .scale(100) // This is like the zoom
+          .translate([width / 2, height / 2]);
+
+        // const projection = d3
+        //   .geoNaturalEarth1()
+        //   .scale(120)
+        //   .translate([width / 2, height / 2]);
+
+        // Load external data and boot
+        data = d3.group(data, (d) => d.location);
+        d3.json(
+          "https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson"
+        ).then(function (mapData) {
+          // Filter data
+          // data.features = data.features.filter((d) => {
+          //   console.log(d.properties.name);
+          //   return d.properties.name == "";
+          // });
+
+          // Draw the map
+
+          svg
+            .append("g")
+            .selectAll("path")
+            .data(mapData.features)
+            .join("path")
+            .attr("class", "country")
+            .attr("d", d3.geoPath().projection(projection))
+            .style("stroke", "#fff")
+            .on("mouseover", function (e, d) {
+              d3.select(this).attr("fill", "blue");
+              console.log(d);
+              countryName = d.properties.name;
+              console.log(countryName);
+              countryData = data.get(countryName);
+              console.log(countryData);
+            })
+            .on("mouseout", function () {
+              d3.select(this).attr("fill", "#69b3a2");
+            });
+
+          const margin = { top: 10, right: 30, bottom: 30, left: 60 },
+            width = 460 - margin.left - margin.right,
+            height = 400 - margin.top - margin.bottom;
+
+          // append the svg object to the body of the page
+          const linesvg = d3
+            .select("#my_graph")
+            .append("svg")
+            .attr("width", width + margin.left + margin.right)
+            .attr("height", height + margin.top + margin.bottom)
+            .append("g")
+            .attr("transform", `translate(${margin.left},${margin.top})`);
+          d3.csv(
+            "https://raw.githubusercontent.com/holtzy/data_to_viz/master/Example_dataset/3_TwoNumOrdered_comma.csv",
+
+            // When reading the csv, I must format variables:
+            (d) => {
+              return { date: d3.timeParse("%Y-%m-%d")(d.date), value: d.value };
+            }
+          ).then(
+            // Now I can use this dataset:
+            function (data) {
+              // Add X axis --> it is a date format
+              const x = d3
+                .scaleTime()
+                .domain(d3.extent(data, (d) => d.date))
+                .range([0, width]);
+              xAxis = linesvg
+                .append("g")
+                .attr("transform", `translate(0,${height})`)
+                .call(d3.axisBottom(x));
+
+              // Add Y axis
+              const y = d3
+                .scaleLinear()
+                .domain([0, d3.max(data, (d) => +d.value)])
+                .range([height, 0]);
+              yAxis = linesvg.append("g").call(d3.axisLeft(y));
+
+              // Add a clipPath: everything out of this area won't be drawn.
+              const clip = linesvg
+                .append("defs")
+                .append("clipPath")
+                .attr("id", "clip")
+                .append("rect")
+                .attr("width", width)
+                .attr("height", height)
+                .attr("x", 0)
+                .attr("y", 0);
+
+              // Add brushing
+              const brush = d3
+                .brushX() // Add the brush feature using the d3.brush function
+                .extent([
+                  [0, 0],
+                  [width, height],
+                ]) // initialise the brush area: start at 0,0 and finishes at width,height: it means I select the whole graph area
+                .on("end", updateChart); // Each time the brush selection changes, trigger the 'updateChart' function
+
+              // Create the area variable: where both the area and the brush take place
+              const area = linesvg.append("g").attr("clip-path", "url(#clip)");
+
+              // Create an area generator
+              const areaGenerator = d3
+                .area()
+                .x((d) => x(d.date))
+                .y0(y(0))
+                .y1((d) => y(d.value));
+
+              // Add the area
+              area
+                .append("path")
+                .datum(data)
+                .attr("class", "myArea") // I add the class myArea to be able to modify it later on.
+                .attr("fill", "#69b3a2")
+                .attr("fill-opacity", 0.3)
+                .attr("stroke", "black")
+                .attr("stroke-width", 1)
+                .attr("d", areaGenerator);
+
+              // Add the brushing
+              area.append("g").attr("class", "brush").call(brush);
+
+              // A function that set idleTimeOut to null
+              let idleTimeout;
+              function idled() {
+                idleTimeout = null;
+              }
+
+              // A function that update the chart for given boundaries
+              function updateChart(event) {
+                // What are the selected boundaries?
+                extent = event.selection;
+
+                // If no selection, back to initial coordinate. Otherwise, update X axis domain
+                if (!extent) {
+                  if (!idleTimeout)
+                    return (idleTimeout = setTimeout(idled, 350)); // This allows to wait a little bit
+                  x.domain([4, 8]);
+                } else {
+                  x.domain([x.invert(extent[0]), x.invert(extent[1])]);
+                  area.select(".brush").call(brush.move, null); // This remove the grey brush area as soon as the selection has been done
+                }
+
+                // Update axis and area position
+                xAxis.transition().duration(1000).call(d3.axisBottom(x));
+                area
+                  .select(".myArea")
+                  .transition()
+                  .duration(1000)
+                  .attr("d", areaGenerator);
+              }
+
+              // If user double click, reinitialize the chart
+              linesvg.on("dblclick", function () {
+                x.domain(d3.extent(data, (d) => d.date));
+                xAxis.transition().call(d3.axisBottom(x));
+                area.select(".myArea").transition().attr("d", areaGenerator);
+              });
+            }
+          );
+        });
+      });
+    </script>
+  </body>
+</html>
