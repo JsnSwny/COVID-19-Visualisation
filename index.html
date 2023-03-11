@@ -9,29 +9,52 @@
     <script src="https://d3js.org/d3-geo-projection.v3.min.js"></script>
     <style>
       .country {
-        fill: #9f9f9f;
+        /* fill: #9f9f9f; */
         cursor: pointer;
       }
       .country:hover {
         fill: #d04b4b;
       }
       .map {
-        background-color: green;
+        background-color: white;
+        border: 1px solid gray;
+        display: flex;
+        justify-content: space-between;
+        padding: 5rem 0;
       }
     </style>
   </head>
   <body>
     <div class="map">
-      <svg id="my_dataviz" width="500" height="400"></svg>
+      <div>legend</div>
+      <svg id="my_dataviz" width="1000" height="500"></svg>
+      <ul id="countries_list">
+        <li></li>
+      </ul>
     </div>
 
     <div id="my_graph"></div>
     <script>
-      d3.csv("cases.csv").then((data) => {
-        // The svg
-        const svg = d3.select("svg"),
-          width = +svg.attr("width"),
-          height = +svg.attr("height");
+      const getMap = async () => {
+        const mapData = await d3.json(
+          "https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson"
+        );
+        return mapData;
+      };
+
+      const getData = async () => {
+        const data = await d3.csv(
+          "https://raw.githubusercontent.com/owid/covid-19-data/master/public/data/owid-covid-data.csv"
+        );
+        return data;
+      };
+
+      map = getMap();
+
+      getData().then((data) => {
+        const svg = d3.select("svg");
+        let width = +svg.attr("width");
+        let height = +svg.attr("height");
 
         const projection = d3
           .geoNaturalEarth1()
@@ -39,24 +62,50 @@
           .scale(100) // This is like the zoom
           .translate([width / 2, height / 2]);
 
-        // const projection = d3
-        //   .geoNaturalEarth1()
-        //   .scale(120)
-        //   .translate([width / 2, height / 2]);
-
+        // project.fitSize([900, 500], geojson);
         // Load external data and boot
+        console.log(data);
+        casesRollup = d3.rollup(
+          data,
+          (v) => d3.sum(v, (d) => d.new_cases),
+          (d) => d.iso_code
+        );
+        const sortedRollup = Array.from(casesRollup, ([key, value]) => ({
+          key,
+          value,
+        })).sort((a, b) => d3.descending(a.value, b.value));
+
+        var scale = d3.scaleLinear().domain([0, 99030129]).range([0, 1]);
+
+        console.log(sortedRollup);
         data = d3.group(data, (d) => d.location);
-        d3.json(
-          "https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson"
-        ).then(function (mapData) {
-          // Filter data
-          // data.features = data.features.filter((d) => {
-          //   console.log(d.properties.name);
-          //   return d.properties.name == "";
-          // });
 
-          // Draw the map
+        // mostCases = data.sort((a, b) => d3.descending(a[1].))
 
+        console.log(casesRollup);
+
+        d3.select("#countries_list")
+          .selectAll("li")
+          .data(sortedRollup)
+          .join("li")
+          .attr("data-country", (d) => d.key)
+          .text((d) => d.key + ": " + d.value);
+
+        getMap().then((mapData) => {
+          // project.fitSize([900, 500], geojson);
+          console.log(sortedRollup);
+          var color = d3
+            .scaleLinear()
+            .domain([0, sortedRollup[0].value])
+            .range(["white", "red"]);
+
+          projection.fitSize([1000, 500], mapData);
+          const getCountryText = (name) => {
+            return d3.selectAll("[data-country]").filter(function () {
+              console.log();
+              return d3.select(this).attr("data-country") === name;
+            });
+          };
           svg
             .append("g")
             .selectAll("path")
@@ -65,16 +114,17 @@
             .attr("class", "country")
             .attr("d", d3.geoPath().projection(projection))
             .style("stroke", "#fff")
-            .on("mouseover", function (e, d) {
-              d3.select(this).attr("fill", "blue");
-              console.log(d);
-              countryName = d.properties.name;
-              console.log(countryName);
-              countryData = data.get(countryName);
-              console.log(countryData);
+            .attr("fill", (d) => {
+              return color(casesRollup.get(d.id));
             })
-            .on("mouseout", function () {
-              d3.select(this).attr("fill", "#69b3a2");
+            .on("mouseover", function (e, d) {
+              console.log(d);
+              d3.select(this).attr("fill", "blue");
+              getCountryText(d.id).style("color", "red");
+            })
+            .on("mouseout", function (e, d) {
+              d3.select(this).attr("fill", (d) => color(casesRollup.get(d.id)));
+              getCountryText(d.id).style("color", "black");
             });
 
           const margin = { top: 10, right: 30, bottom: 30, left: 60 },
@@ -94,7 +144,10 @@
 
             // When reading the csv, I must format variables:
             (d) => {
-              return { date: d3.timeParse("%Y-%m-%d")(d.date), value: d.value };
+              return {
+                date: d3.timeParse("%Y-%m-%d")(d.date),
+                value: d.value,
+              };
             }
           ).then(
             // Now I can use this dataset:
