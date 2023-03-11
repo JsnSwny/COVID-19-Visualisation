@@ -21,6 +21,14 @@
         display: flex;
         justify-content: space-between;
         padding: 5rem 0;
+        max-height: 800px;
+      }
+
+      .countries-list {
+        display: flex;
+        flex-direction: column;
+        overflow: auto;
+        list-style-type: none;
       }
     </style>
   </head>
@@ -28,7 +36,7 @@
     <div class="map">
       <div>legend</div>
       <svg id="my_dataviz" width="1000" height="500"></svg>
-      <ul id="countries_list">
+      <ul id="countries_list" class="countries-list">
         <li></li>
       </ul>
     </div>
@@ -51,6 +59,8 @@
 
       map = getMap();
 
+      console.log("test")
+
       getData().then((data) => {
         const svg = d3.select("svg");
         let width = +svg.attr("width");
@@ -65,8 +75,10 @@
         // project.fitSize([900, 500], geojson);
         // Load external data and boot
         console.log(data);
+        casesRollup = data.filter(item => item.iso_code.length <= 3)
+
         casesRollup = d3.rollup(
-          data,
+          casesRollup,
           (v) => d3.sum(v, (d) => d.new_cases),
           (d) => d.iso_code
         );
@@ -89,20 +101,26 @@
           .data(sortedRollup)
           .join("li")
           .attr("data-country", (d) => d.key)
-          .text((d) => d.key + ": " + d.value);
+          .text((d) => d.key + ": " + d.value.toLocaleString());
 
         getMap().then((mapData) => {
           // project.fitSize([900, 500], geojson);
           console.log(sortedRollup);
-          var color = d3
+          const getRanges = sortedRollup[0].value / 5
+          console.log([getRanges, getRanges * 2, getRanges * 3, getRanges * 4, getRanges * 5])
+          // var color = d3
+          //   .scaleThreshold()
+          //   .domain([1000000, 5000000, 10000000, 50000000, 100000000])
+          //   .range(["green", "darkgreen", "orange", "yellow", "red"]);
+
+            var color = d3
             .scaleLinear()
-            .domain([0, sortedRollup[0].value])
-            .range(["white", "red"]);
+            .domain([1000, 100000000])
+            .range(["#181010", "#FC0000"]);
 
           projection.fitSize([1000, 500], mapData);
           const getCountryText = (name) => {
             return d3.selectAll("[data-country]").filter(function () {
-              console.log();
               return d3.select(this).attr("data-country") === name;
             });
           };
@@ -113,7 +131,7 @@
             .join("path")
             .attr("class", "country")
             .attr("d", d3.geoPath().projection(projection))
-            .style("stroke", "#fff")
+            .style("stroke", "#000000")
             .attr("fill", (d) => {
               return color(casesRollup.get(d.id));
             })
@@ -127,6 +145,14 @@
               getCountryText(d.id).style("color", "black");
             });
 
+
+
+
+
+
+
+
+
           const margin = { top: 10, right: 30, bottom: 30, left: 60 },
             width = 460 - margin.left - margin.right,
             height = 400 - margin.top - margin.bottom;
@@ -139,6 +165,13 @@
             .attr("height", height + margin.top + margin.bottom)
             .append("g")
             .attr("transform", `translate(${margin.left},${margin.top})`);
+
+
+
+
+
+
+
           d3.csv(
             "https://raw.githubusercontent.com/holtzy/data_to_viz/master/Example_dataset/3_TwoNumOrdered_comma.csv",
 
