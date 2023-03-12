@@ -13,6 +13,7 @@ const getData = async () => {
     return {
       iso_code: d.iso_code,
       location: d.location,
+      continent: d.continent,
       deaths: d.new_deaths,
       date: d3.timeParse("%Y-%m-%d")(d.date),
       cases: d.new_cases,
@@ -22,18 +23,95 @@ const getData = async () => {
   return data;
 };
 
+let globalData = null;
+
+const updateContinent = (continent) => {
+  console.log(globalData);
+
+  console.log(continent);
+  new_data = globalData.filter((item) => item.continent == continent);
+
+  casesRollup = new_data.filter((item) => item.iso_code.length <= 3);
+
+  casesRollup = d3.rollup(
+    casesRollup,
+    (v) => d3.sum(v, (d) => d.cases),
+    (d) => d.iso_code
+  );
+
+  countryToCode = new_data.reduce((result, item) => {
+    result[item.iso_code] = item.location;
+    return result;
+  }, {});
+
+  const sortedRollup = Array.from(casesRollup, ([key, value]) => ({
+    key,
+    value,
+  })).sort((a, b) => d3.descending(a.value, b.value));
+
+  var g = d3
+    .select("#countries_list")
+    .selectAll("li")
+    .data(sortedRollup)
+    .join(
+      function (enter) {
+        g = enter.append("li").attr("class", "country-item");
+        g.append("input")
+          .attr("type", "checkbox")
+          .attr("class", "country-item__check");
+
+        g.append("span")
+          .attr("class", "country-item__indicator")
+          .style("background-color", (d) => color(d.value));
+
+        g.append("img")
+          .attr("class", "country-item__image")
+          .attr("crossorigin", "anonymous")
+          // https://alexsobolenko.github.io/flag-icons/
+          .attr("src", (d) => `flags/4x3/${d.key.toLowerCase()}.svg`);
+
+        return g;
+      },
+      function (update) {
+        return;
+      },
+      function (exit) {
+        console.log(exit);
+        return exit.remove();
+      }
+    );
+
+  var countryText = g
+    .append("div")
+    .attr("data-country", (d) => d.key)
+    .style("flex", "1")
+    .style("display", "flex")
+    .style("justify-content", "space-between");
+
+  countryText
+    .append("span")
+    .text((d) => countryToCode[d.key])
+    .style("font-weight", "bold");
+
+  countryText
+    .append("span")
+    .text((d) => d.value.toLocaleString())
+    .style("flex", 1)
+    .style("text-align", "right");
+};
+
+const continentSelect = document.getElementById("continent-selector");
+
+continentSelect.addEventListener("change", () => {
+  updateContinent(continentSelect.value);
+});
+
 map = getMap();
 
 getData().then((data) => {
-  const svg = d3.select("#map");
-  let width = +svg.attr("width");
-  let height = +svg.attr("height");
+  globalData = data;
 
-  const projection = d3
-    .geoNaturalEarth1()
-    // .center([7, 31]) // GPS of location to zoom on
-    .scale(100) // This is like the zoom
-    .translate([width / 2, height / 2]);
+  console.log(new Set(data.map((item) => item.continent)));
 
   // project.fitSize([900, 500], geojson);
   // Load external data and boot
@@ -71,13 +149,17 @@ getData().then((data) => {
       "#8B0000",
     ]);
 
-  const loadCountryText = (data) => {
+  const loadCountryText = (data = globalData) => {
     var g = d3
       .select("#countries_list")
       .selectAll("li")
       .data(data)
       .join("li")
       .attr("class", "country-item");
+
+    g.append("input")
+      .attr("type", "checkbox")
+      .attr("class", "country-item__check");
 
     g.append("span")
       .attr("class", "country-item__indicator")
@@ -112,8 +194,18 @@ getData().then((data) => {
 
   getMap().then((mapData) => {
     const createMap = () => {
+      const svg = d3.select("#map");
       mapWidth = document.querySelector(".map").offsetWidth;
       svg.attr("width", mapWidth);
+      svg.attr("height", 600);
+      let width = +svg.attr("width");
+      let height = +svg.attr("height");
+      const projection = d3
+        .geoNaturalEarth1()
+        .center([0, 5])
+        .scale(100)
+        .translate([width / 2, height / 2]);
+
       projection.fitSize([mapWidth, 600], mapData);
 
       let map = svg
@@ -139,7 +231,7 @@ getData().then((data) => {
           d3.select(this).attr("fill", (d) => color(casesRollup.get(d.id)));
           getCountryText(d.id).style("color", "black");
         });
-      svg.attr("height", document.getElementById("map").getBBox().height + 10);
+      //   svg.attr("height", document.getElementById("map").getBBox().height + 10);
     };
 
     const getCountryText = (name) => {

@@ -26,10 +26,24 @@
         <div class="map">
           <svg id="map" width="1000"></svg>
         </div>
-
-        <ul id="countries_list" class="countries-list">
-          <li></li>
-        </ul>
+        <div class="countries-list">
+          <select
+            id="continent-selector"
+            class="map-selector"
+            onChange="updateContinent()"
+          >
+            <option value="World">World</option>
+            <option value="Africa">Africa</option>
+            <option value="North America">North America</option>
+            <option value="South America">South America</option>
+            <option value="Europe">Europe</option>
+            <option value="Oceania">Oceania</option>
+            <option value="Asia">Asia</option>
+          </select>
+          <ul id="countries_list">
+            <li></li>
+          </ul>
+        </div>
       </section>
       <section class="section">
         <div id="my_graph"></div>
