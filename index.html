@@ -7,7 +7,23 @@
     <title>Document</title>
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <script src="https://d3js.org/d3-geo-projection.v3.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+
     <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        font-family: "Inter", sans-serif;
+        background-color: #fff9f9;
+      }
       .country {
         /* fill: #9f9f9f; */
         cursor: pointer;
@@ -17,11 +33,12 @@
       }
       .map {
         background-color: white;
-        border: 1px solid gray;
+        border: 1px solid #d9d9d9;
         display: flex;
         justify-content: space-between;
-        padding: 5rem 0;
-        max-height: 800px;
+        padding: 32px;
+        max-height: 600px;
+        border-radius: 10px;
       }
 
       .countries-list {
@@ -29,16 +46,56 @@
         flex-direction: column;
         overflow: auto;
         list-style-type: none;
+        padding: 0 1rem;
+      }
+
+      .country-item {
+        display: flex;
+        align-items: center;
+        padding: 0.75rem 0;
+        border-bottom: 1px solid #d9d9d9;
+        font-size: 14px;
+      }
+
+      .country-item__image {
+        width: 18px;
+        margin-right: 6px;
+        display: block;
+      }
+
+      .country-item__indicator {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        display: inline-block;
+        margin-right: 16px;
+      }
+      .container {
+        margin: 0 auto;
+        padding: 1rem 2rem;
+      }
+
+      .header {
+        background-color: #d04b4b;
+        color: white;
+        font-weight: bold;
       }
     </style>
   </head>
   <body>
-    <div class="map">
-      <div>legend</div>
-      <svg id="my_dataviz" width="1000" height="500"></svg>
-      <ul id="countries_list" class="countries-list">
-        <li></li>
-      </ul>
+    <header class="header">
+      <div class="container">
+        <span>CoronaTrack</span>
+      </div>
+    </header>
+    <div class="container">
+      <div class="map">
+        <svg id="legend-svg"></svg>
+        <svg id="map" width="1000" height="536"></svg>
+        <ul id="countries_list" class="countries-list">
+          <li></li>
+        </ul>
+      </div>
     </div>
 
     <div id="my_graph"></div>
@@ -50,19 +107,20 @@
         return mapData;
       };
 
+      const dataLink =
+        "https://raw.githubusercontent.com/owid/covid-19-data/master/public/data/owid-covid-data.csv";
+
       const getData = async () => {
-        const data = await d3.csv(
-          "https://raw.githubusercontent.com/owid/covid-19-data/master/public/data/owid-covid-data.csv"
-        );
+        const data = await d3.csv(dataLink);
         return data;
       };
 
       map = getMap();
 
-      console.log("test")
+      console.log("test");
 
       getData().then((data) => {
-        const svg = d3.select("svg");
+        const svg = d3.select("#map");
         let width = +svg.attr("width");
         let height = +svg.attr("height");
 
@@ -74,14 +132,24 @@
 
         // project.fitSize([900, 500], geojson);
         // Load external data and boot
-        console.log(data);
-        casesRollup = data.filter(item => item.iso_code.length <= 3)
+        casesRollup = data.filter((item) => item.iso_code.length <= 3);
 
         casesRollup = d3.rollup(
           casesRollup,
           (v) => d3.sum(v, (d) => d.new_cases),
           (d) => d.iso_code
         );
+
+        countryToCode = data.reduce((result, item) => {
+          result[item.iso_code] = item.location;
+          return result;
+        }, {});
+
+        var color = d3
+          .scaleLinear()
+          .domain([1000000, 25000000])
+          .range(["#181010", "#FC0000"]);
+
         const sortedRollup = Array.from(casesRollup, ([key, value]) => ({
           key,
           value,
@@ -89,36 +157,62 @@
 
         var scale = d3.scaleLinear().domain([0, 99030129]).range([0, 1]);
 
-        console.log(sortedRollup);
         data = d3.group(data, (d) => d.location);
 
         // mostCases = data.sort((a, b) => d3.descending(a[1].))
 
-        console.log(casesRollup);
-
-        d3.select("#countries_list")
+        // COUNTRIES TEXT ON RIGHT
+        var g = d3
+          .select("#countries_list")
           .selectAll("li")
           .data(sortedRollup)
           .join("li")
+          .attr("class", "country-item");
+
+        g.append("span")
+          .attr("class", "country-item__indicator")
+          .style("background-color", (d) => color(d.value));
+
+        g.append("img")
+          .attr("class", "country-item__image")
+          .attr("crossorigin", "anonymous")
+
+          .attr("src", (d) => `https://countryflagsapi.com/png/${d.key}`);
+
+        var countryText = g
+          .append("div")
           .attr("data-country", (d) => d.key)
-          .text((d) => d.key + ": " + d.value.toLocaleString());
+          .style("flex", "1")
+          .style("display", "flex")
+          .style("justify-content", "space-between");
+
+        countryText
+          .append("span")
+          .text((d) => countryToCode[d.key])
+          .style("font-weight", "bold");
+
+        countryText
+          .append("span")
+          .text((d) => d.value.toLocaleString())
+          .style("flex", 1)
+          .style("text-align", "right");
 
         getMap().then((mapData) => {
           // project.fitSize([900, 500], geojson);
-          console.log(sortedRollup);
-          const getRanges = sortedRollup[0].value / 5
-          console.log([getRanges, getRanges * 2, getRanges * 3, getRanges * 4, getRanges * 5])
+          const getRanges = sortedRollup[0].value / 5;
+          console.log([
+            getRanges,
+            getRanges * 2,
+            getRanges * 3,
+            getRanges * 4,
+            getRanges * 5,
+          ]);
           // var color = d3
           //   .scaleThreshold()
           //   .domain([1000000, 5000000, 10000000, 50000000, 100000000])
           //   .range(["green", "darkgreen", "orange", "yellow", "red"]);
 
-            var color = d3
-            .scaleLinear()
-            .domain([1000, 100000000])
-            .range(["#181010", "#FC0000"]);
-
-          projection.fitSize([1000, 500], mapData);
+          projection.fitSize([1000, 536], mapData);
           const getCountryText = (name) => {
             return d3.selectAll("[data-country]").filter(function () {
               return d3.select(this).attr("data-country") === name;
@@ -126,6 +220,7 @@
           };
           svg
             .append("g")
+
             .selectAll("path")
             .data(mapData.features)
             .join("path")
@@ -145,14 +240,6 @@
               getCountryText(d.id).style("color", "black");
             });
 
-
-
-
-
-
-
-
-
           const margin = { top: 10, right: 30, bottom: 30, left: 60 },
             width = 460 - margin.left - margin.right,
             height = 400 - margin.top - margin.bottom;
@@ -165,12 +252,6 @@
             .attr("height", height + margin.top + margin.bottom)
             .append("g")
             .attr("transform", `translate(${margin.left},${margin.top})`);
-
-
-
-
-
-
 
           d3.csv(
             "https://raw.githubusercontent.com/holtzy/data_to_viz/master/Example_dataset/3_TwoNumOrdered_comma.csv",
