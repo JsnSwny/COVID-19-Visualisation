@@ -24,26 +24,41 @@
     <div class="container">
       <section class="section map-section">
         <div class="map">
-          <ul id="chart-selector" class="chart-selector">
-            <li>Map</li>
-            <li>Chart</li>
-          </ul>
+          <div class="filters">
+            <div class="form-group">
+              <label class="label">Metric</label>
+              <div class="select-wrapper">
+                <select class="input">
+                  <option>Cases</option>
+                </select>
+              </div>
+            </div>
+            <ul class="chart-or-map">
+              <li class="active toggle-view" data-view="map">Map</li>
+              <li class="toggle-view" data-view="chart">Chart</li>
+            </ul>
+          </div>
           <svg id="map" width="1000"></svg>
         </div>
         <div class="countries-list">
-          <select
-            id="continent-selector"
-            class="map-selector"
-            onChange="updateContinent()"
-          >
-            <option value="World">World</option>
-            <option value="Africa">Africa</option>
-            <option value="North America">North America</option>
-            <option value="South America">South America</option>
-            <option value="Europe">Europe</option>
-            <option value="Oceania">Oceania</option>
-            <option value="Asia">Asia</option>
-          </select>
+          <div class="continent-input">
+            <div class="select-wrapper">
+              <select
+                id="continent-selector"
+                class="map-selector input"
+                onChange="updateContinent()"
+              >
+                <option value="World">World</option>
+                <option value="Africa">Africa</option>
+                <option value="North America">North America</option>
+                <option value="South America">South America</option>
+                <option value="Europe">Europe</option>
+                <option value="Oceania">Oceania</option>
+                <option value="Asia">Asia</option>
+              </select>
+            </div>
+          </div>
+
           <ul id="countries_list"></ul>
         </div>
       </section>
