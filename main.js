@@ -1,3 +1,29 @@
+let data = null;
+let casesRollup = null;
+let sortedRollup = null;
+
+//   https://www.vis4.net/blog/2013/09/mastering-multi-hued-color-scales/
+var color = d3
+  .scaleThreshold()
+  .domain([1000, 10000, 1000000, 5000000, 10000000, 25000000, 50000000])
+  .range([
+    "#FFFFE0",
+    "#FFDFB8",
+    "#FFBC94",
+    "#FF9777",
+    "#FF6962",
+    "#EE4256",
+    "#D21F47",
+    "#B0062C",
+    "#8B0000",
+  ]);
+
+const getCountryText = (name) => {
+  return d3.selectAll("[data-country]").filter(function () {
+    return d3.select(this).attr("data-country") === name;
+  });
+};
+
 const getMap = async () => {
   const mapData = await d3.json(
     "https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson"
@@ -23,39 +49,57 @@ const getData = async () => {
   return data;
 };
 
-let globalData = null;
+const createMap = (mapData) => {
+  const svg = d3.select("#map");
+  mapWidth = document.querySelector(".map").offsetWidth;
+  svg.attr("width", mapWidth);
+  svg.attr("height", 600);
+  let width = +svg.attr("width");
+  let height = +svg.attr("height");
+  const projection = d3
+    .geoNaturalEarth1()
+    .center([0, 5])
+    .scale(100)
+    .translate([width / 2, height / 2]);
 
-const updateContinent = (continent) => {
-  console.log(globalData);
+  projection.fitSize([mapWidth, 600], mapData);
 
-  console.log(continent);
-  new_data = globalData.filter((item) => item.continent == continent);
+  let map = svg
+    .on("wheel", function (e) {
+      initX = d3.pointer(e, this);
+    })
+    .append("g");
+  map
+    .selectAll("path")
+    .data(mapData.features.filter((d) => d.id !== "GRL" && d.id !== "ATA"))
+    .join("path")
+    .attr("class", "country")
+    .attr("d", d3.geoPath().projection(projection))
+    .style("stroke", "#000000")
+    .attr("fill", (d) => {
+      return color(casesRollup.get(d.id));
+    })
+    .on("mouseover", function (e, d) {
+      d3.select(this).attr("fill", "blue");
+      getCountryText(d.id).style("color", "red");
+    })
+    .on("mouseout", function (e, d) {
+      d3.select(this).attr("fill", (d) => color(casesRollup.get(d.id)));
+      getCountryText(d.id).style("color", "black");
+    });
+  //   svg.attr("height", document.getElementById("map").getBBox().height + 10);
+};
 
-  casesRollup = new_data.filter((item) => item.iso_code.length <= 3);
-
-  casesRollup = d3.rollup(
-    casesRollup,
-    (v) => d3.sum(v, (d) => d.cases),
-    (d) => d.iso_code
-  );
-
-  countryToCode = new_data.reduce((result, item) => {
-    result[item.iso_code] = item.location;
-    return result;
-  }, {});
-
-  const sortedRollup = Array.from(casesRollup, ([key, value]) => ({
-    key,
-    value,
-  })).sort((a, b) => d3.descending(a.value, b.value));
-
+const loadCountryText = (data) => {
+  console.log(data);
   var g = d3
     .select("#countries_list")
     .selectAll("li")
-    .data(sortedRollup)
+    .data(data)
     .join(
       function (enter) {
         g = enter.append("li").attr("class", "country-item");
+        console.log(enter);
         g.append("input")
           .attr("type", "checkbox")
           .attr("class", "country-item__check");
@@ -69,35 +113,74 @@ const updateContinent = (continent) => {
           .attr("crossorigin", "anonymous")
           // https://alexsobolenko.github.io/flag-icons/
           .attr("src", (d) => `flags/4x3/${d.key.toLowerCase()}.svg`);
+        var countryText = g
+          .append("div")
+          .attr("data-country", (d) => d.key)
+          .style("flex", "1")
+          .style("display", "flex")
+          .style("justify-content", "space-between");
 
+        countryText
+          .append("span")
+          .text((d) => countryToCode[d.key])
+          .style("font-weight", "bold");
+
+        countryText
+          .append("span")
+          .text((d) => d.value.toLocaleString())
+          .style("flex", 1)
+          .style("text-align", "right");
         return g;
       },
       function (update) {
         return;
       },
       function (exit) {
-        console.log(exit);
         return exit.remove();
       }
     );
+};
 
-  var countryText = g
-    .append("div")
-    .attr("data-country", (d) => d.key)
-    .style("flex", "1")
-    .style("display", "flex")
-    .style("justify-content", "space-between");
+const calculateRollup = (data) => {
+  let casesRollup = data.filter((item) => item.iso_code.length <= 3);
 
-  countryText
-    .append("span")
-    .text((d) => countryToCode[d.key])
-    .style("font-weight", "bold");
+  casesRollup = d3.rollup(
+    casesRollup,
+    (v) => d3.sum(v, (d) => d.cases),
+    (d) => d.iso_code
+  );
 
-  countryText
-    .append("span")
-    .text((d) => d.value.toLocaleString())
-    .style("flex", 1)
-    .style("text-align", "right");
+  let sortedRollup = Array.from(casesRollup, ([key, value]) => ({
+    key,
+    value,
+  })).sort((a, b) => d3.descending(a.value, b.value));
+
+  return { casesRollup, sortedRollup };
+};
+
+const updateData = () => {
+  // project.fitSize([900, 500], geojson);
+  // Load external data and boot
+
+  countryToCode = data.reduce((result, item) => {
+    result[item.iso_code] = item.location;
+    return result;
+  }, {});
+
+  sortedRollup = calculateRollup(data).sortedRollup;
+  casesRollup = calculateRollup(data).casesRollup;
+};
+
+const updateContinent = (continent) => {
+  if (continent == "World") {
+    new_data = data;
+  } else {
+    new_data = data.filter((item) => item.continent == continent);
+  }
+
+  updateData();
+  sortedRollup = calculateRollup(new_data).sortedRollup;
+  loadCountryText(sortedRollup);
 };
 
 const continentSelect = document.getElementById("continent-selector");
@@ -106,141 +189,12 @@ continentSelect.addEventListener("change", () => {
   updateContinent(continentSelect.value);
 });
 
-map = getMap();
-
-getData().then((data) => {
-  globalData = data;
-
-  console.log(new Set(data.map((item) => item.continent)));
-
-  // project.fitSize([900, 500], geojson);
-  // Load external data and boot
-  casesRollup = data.filter((item) => item.iso_code.length <= 3);
-
-  casesRollup = d3.rollup(
-    casesRollup,
-    (v) => d3.sum(v, (d) => d.cases),
-    (d) => d.iso_code
-  );
-
-  countryToCode = data.reduce((result, item) => {
-    result[item.iso_code] = item.location;
-    return result;
-  }, {});
-
-  const sortedRollup = Array.from(casesRollup, ([key, value]) => ({
-    key,
-    value,
-  })).sort((a, b) => d3.descending(a.value, b.value));
-
-  //   https://www.vis4.net/blog/2013/09/mastering-multi-hued-color-scales/
-  var color = d3
-    .scaleThreshold()
-    .domain([1000, 10000, 1000000, 5000000, 10000000, 25000000, 50000000])
-    .range([
-      "#FFFFE0",
-      "#FFDFB8",
-      "#FFBC94",
-      "#FF9777",
-      "#FF6962",
-      "#EE4256",
-      "#D21F47",
-      "#B0062C",
-      "#8B0000",
-    ]);
-
-  const loadCountryText = (data = globalData) => {
-    var g = d3
-      .select("#countries_list")
-      .selectAll("li")
-      .data(data)
-      .join("li")
-      .attr("class", "country-item");
-
-    g.append("input")
-      .attr("type", "checkbox")
-      .attr("class", "country-item__check");
-
-    g.append("span")
-      .attr("class", "country-item__indicator")
-      .style("background-color", (d) => color(d.value));
-
-    g.append("img")
-      .attr("class", "country-item__image")
-      .attr("crossorigin", "anonymous")
-      // https://alexsobolenko.github.io/flag-icons/
-      .attr("src", (d) => `flags/4x3/${d.key.toLowerCase()}.svg`);
-
-    var countryText = g
-      .append("div")
-      .attr("data-country", (d) => d.key)
-      .style("flex", "1")
-      .style("display", "flex")
-      .style("justify-content", "space-between");
-
-    countryText
-      .append("span")
-      .text((d) => countryToCode[d.key])
-      .style("font-weight", "bold");
-
-    countryText
-      .append("span")
-      .text((d) => d.value.toLocaleString())
-      .style("flex", 1)
-      .style("text-align", "right");
-  };
-
+getData().then((res) => {
+  data = res;
+  updateData();
   loadCountryText(sortedRollup);
-
   getMap().then((mapData) => {
-    const createMap = () => {
-      const svg = d3.select("#map");
-      mapWidth = document.querySelector(".map").offsetWidth;
-      svg.attr("width", mapWidth);
-      svg.attr("height", 600);
-      let width = +svg.attr("width");
-      let height = +svg.attr("height");
-      const projection = d3
-        .geoNaturalEarth1()
-        .center([0, 5])
-        .scale(100)
-        .translate([width / 2, height / 2]);
-
-      projection.fitSize([mapWidth, 600], mapData);
-
-      let map = svg
-        .on("wheel", function (e) {
-          initX = d3.pointer(e, this);
-        })
-        .append("g");
-      map
-        .selectAll("path")
-        .data(mapData.features.filter((d) => d.id !== "GRL" && d.id !== "ATA"))
-        .join("path")
-        .attr("class", "country")
-        .attr("d", d3.geoPath().projection(projection))
-        .style("stroke", "#000000")
-        .attr("fill", (d) => {
-          return color(casesRollup.get(d.id));
-        })
-        .on("mouseover", function (e, d) {
-          d3.select(this).attr("fill", "blue");
-          getCountryText(d.id).style("color", "red");
-        })
-        .on("mouseout", function (e, d) {
-          d3.select(this).attr("fill", (d) => color(casesRollup.get(d.id)));
-          getCountryText(d.id).style("color", "black");
-        });
-      //   svg.attr("height", document.getElementById("map").getBBox().height + 10);
-    };
-
-    const getCountryText = (name) => {
-      return d3.selectAll("[data-country]").filter(function () {
-        return d3.select(this).attr("data-country") === name;
-      });
-    };
-
-    createMap();
+    createMap(mapData);
 
     const margin = { top: 10, right: 30, bottom: 30, left: 60 },
       width = window.document.body.clientWidth - 128,
@@ -303,8 +257,6 @@ getData().then((data) => {
       .x((d) => x(d.date))
       .y0(y(0))
       .y1((d) => y(d.cases));
-
-    const generateArea = (values) => [];
 
     // Add the area
     area
