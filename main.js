@@ -3,6 +3,8 @@ let mapData = null;
 let casesRollup = null;
 let sortedRollup = null;
 let mapSvg = null;
+let view = document.getElementById("view");
+let selectedCountries = [];
 
 //   https://www.vis4.net/blog/2013/09/mastering-multi-hued-color-scales/
 var color = d3
@@ -73,18 +75,105 @@ toggleViews.forEach((item) => {
     toggleViews.forEach((view) => view.classList.remove("active"));
     item.classList.add("active");
     if (item.dataset.view == "map") {
-      console.log("map");
-      mapSvg.node().style.display = "block";
+      loadMap(mapData);
     } else {
-      console.log("chart");
-      console.log(mapSvg);
-      mapSvg.node().style.display = "none";
+      d3.select("#view").selectAll("svg").remove();
+      loadChart(mapData);
     }
   });
 });
 
-const createMap = (mapData) => {
-  mapSvg = d3.select("#map");
+const loadChart = (mapData) => {
+  // set the dimensions and margins of the graph
+  d3.select("#view").selectAll("svg").remove();
+  mapWidth = document.querySelector(".map").offsetWidth;
+  const margin = { top: 10, right: 30, bottom: 30, left: 10 },
+    width = 1000 - margin.left - margin.right,
+    height = mapWidth - margin.top - margin.bottom;
+
+  // append the svg object to the body of the page
+  const lineSvg = d3
+    .select("#view")
+    .append("svg")
+    .attr("width", width + margin.left + margin.right)
+    .attr("height", height + margin.top + margin.bottom)
+    .append("g")
+    .attr("transform", `translate(${margin.left},${margin.top})`);
+
+  updateChart();
+};
+
+const updateChart = () => {
+  const margin = { top: 10, right: 30, bottom: 30, left: 60 },
+    width = 1000 - margin.left - margin.right,
+    height = 600 - margin.top - margin.bottom;
+  const lineSvg = d3.select("#view").select("g");
+  lineSvg.selectAll("g").remove();
+  lineSvg.selectAll("path").remove();
+  let new_data = data.filter((item) =>
+    selectedCountries.includes(item.location)
+  );
+
+  let rollup = calculateRollup(new_data, "date").casesRollup;
+
+  // Add X axis --> it is a date format
+  const x = d3
+    .scaleTime()
+    .domain(
+      d3.extent(rollup, function (d) {
+        return d[0];
+      })
+    )
+    .range([0, width]);
+  lineSvg
+    .append("g")
+    .attr("transform", `translate(0, ${height})`)
+    .call(d3.axisBottom(x));
+
+  // Add Y axis
+  const y = d3
+    .scaleLinear()
+    .domain([
+      0,
+      d3.max(rollup, function (d) {
+        return d[1];
+      }),
+    ])
+    .range([height, 0]);
+  lineSvg.append("g").call(d3.axisLeft(y));
+  path = lineSvg.append("path");
+
+  path
+    .datum(rollup)
+    .attr("fill", "none")
+    .attr("stroke", "#d04b4b")
+    .attr("stroke-width", 1.5)
+    .attr(
+      "d",
+      d3
+        .line()
+        .x(function (d) {
+          return x(d[0]);
+        })
+        .y(function (d) {
+          return y(d[1]);
+        })
+        .curve(d3.curveBasis)
+    );
+
+  const pathLength = path.node().getTotalLength();
+
+  const transitionPath = d3.transition().ease(d3.easeSin).duration(4000);
+
+  path
+    .attr("stroke-dashoffset", pathLength)
+    .attr("stroke-dasharray", pathLength)
+    .transition(transitionPath)
+    .attr("stroke-dashoffset", 0);
+};
+
+const loadMap = (mapData) => {
+  mapSvg = d3.select("#view").append("svg").attr("id", "map");
   mapWidth = document.querySelector(".map").offsetWidth;
   mapSvg.attr("width", mapWidth);
   mapSvg.attr("height", 700);
@@ -179,13 +268,13 @@ const loadCountryText = (data) => {
     );
 };
 
-const calculateRollup = (data) => {
+const calculateRollup = (data, group_by) => {
   let casesRollup = data.filter((item) => item.iso_code.length <= 3);
 
   casesRollup = d3.rollup(
     casesRollup,
     (v) => d3.sum(v, (d) => d.cases),
-    (d) => d.iso_code
+    (d) => d[group_by]
   );
 
   let sortedRollup = Array.from(casesRollup, ([key, value]) => ({
@@ -210,21 +299,36 @@ const updateData = () => {
     return result;
   }, {});
 
-  sortedRollup = calculateRollup(data).sortedRollup;
-  casesRollup = calculateRollup(data).casesRollup;
+  sortedRollup = calculateRollup(data, "iso_code").sortedRollup;
+  casesRollup = calculateRollup(data, "iso_code").casesRollup;
 };
 
 const updateContinent = (continent) => {
   if (continent == "World") {
     new_data = data;
+    selectedCountries = selectedCountries = Array.from(
+      new Set(
+        data
+          .filter((item) => item.iso_code.length <= 3)
+          .map((item) => item.location)
+      )
+    );
   } else {
     new_data = data.filter((item) => item.continent == continent);
+    selectedCountries = Array.from(
+      new Set(
+        data
+          .filter((item) => item.continent == continent)
+          .map((item) => item.location)
+      )
+    );
   }
 
   updateData();
-  sortedRollup = calculateRollup(new_data).sortedRollup;
+  sortedRollup = calculateRollup(new_data, "iso_code").sortedRollup;
   loadCountryText(sortedRollup);
-  console.log(mapData);
+  updateChart();
+
   mapSvg
     .select("g")
     .selectAll("path")
@@ -263,9 +367,16 @@ getData().then((res) => {
   data = res;
   updateData();
   loadCountryText(sortedRollup);
+  selectedCountries = Array.from(
+    new Set(
+      data
+        .filter((item) => item.iso_code.length <= 3)
+        .map((item) => item.location)
+    )
+  );
   getMap().then((map) => {
     mapData = map;
-    createMap(mapData);
+    loadMap(mapData);
 
     // const margin = { top: 10, right: 30, bottom: 30, left: 60 },
     //   width = window.document.body.clientWidth - 128,
