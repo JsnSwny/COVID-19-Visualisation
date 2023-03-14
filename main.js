@@ -6,6 +6,7 @@ let mapSvg = null;
 let view = document.getElementById("view");
 let filteredCountries = [];
 let selectedCountries = [];
+let currentView = "map";
 
 //   https://www.vis4.net/blog/2013/09/mastering-multi-hued-color-scales/
 var color = d3
@@ -71,22 +72,101 @@ const getData = async () => {
 
 const toggleViews = document.querySelectorAll(".toggle-view");
 
+const updateView = () => {
+  switch (currentView) {
+    case "chart":
+      updateChart();
+      break;
+  }
+};
+
 toggleViews.forEach((item) => {
   item.addEventListener("click", () => {
+    d3.select("#view").selectAll("svg").remove();
     toggleViews.forEach((view) => view.classList.remove("active"));
     item.classList.add("active");
-    if (item.dataset.view == "map") {
-      loadMap(mapData);
-    } else {
-      d3.select("#view").selectAll("svg").remove();
-      loadChart(mapData);
+    currentView = item.dataset.view;
+    switch (item.dataset.view) {
+      case "map":
+        loadMap(mapData);
+        break;
+      case "chart":
+        loadChart();
+        break;
+      case "continentor":
+        loadContinentor();
+        break;
     }
   });
 });
 
-const loadChart = (mapData) => {
+const loadContinentor = () => {
+  let r = 600;
+  lineSvg = d3.select("#view").append("svg").attr("width", r).attr("height", r);
+  lineSvg = lineSvg.append("g");
+
+  let node = null;
+  let rollup = data.filter((item) => item.iso_code.length <= 3);
+
+  rollup = d3.rollup(
+    rollup,
+    (v) => d3.sum(v, (d) => d.cases),
+    (d) => d.continent,
+    (d) => d.location
+  );
+
+  var packLayout = d3.pack().size([r, r]);
+
+  var rootNode = d3.hierarchy(rollup);
+  console.log(rootNode);
+
+  rootNode.sum(function (d) {
+    return d[1];
+  });
+
+  packLayout(rootNode);
+
+  var nodes = lineSvg
+
+    .selectAll("g")
+    .data(rootNode.descendants())
+    .join("g")
+    .attr("transform", function (d) {
+      return "translate(" + [d.x, d.y] + ")";
+    });
+
+  nodes
+    .append("circle")
+    .on("click", function (e, d) {
+      zoom(e, node == d ? root : d);
+      e.stopPropagation();
+    })
+
+    .on("mouseover", (e, d) => {
+      lineSvg
+        .append("text")
+        .attr("class", "country-text country-text--hover")
+        .text(() => {
+          if (d.children === undefined) {
+            return d.data[0];
+          }
+        })
+        .attr("dx", d.x)
+        .attr("dy", d.y);
+    })
+    .on("mouseout", (e, d) => {
+      lineSvg.selectAll(".country-text--hover").remove();
+    })
+    .transition()
+    .duration(2000)
+    .attr("r", function (d) {
+      return d.r;
+    });
+};
+
+const loadChart = () => {
   // set the dimensions and margins of the graph
-  d3.select("#view").selectAll("svg").remove();
+
   mapWidth = document.querySelector(".map").offsetWidth;
   const margin = { top: 10, right: 100, bottom: 30, left: 55 },
     width = mapWidth - margin.left - margin.right,
@@ -106,16 +186,15 @@ const loadChart = (mapData) => {
 
 const addSelectedCountry = (id) => {
   selectedCountries.push(id);
-
-  updateChart();
+  updateView();
 };
 
 const removeSelectedCountry = (id) => {
   selectedCountries = selectedCountries.filter((item) => item != id);
-  updateChart();
+  updateView();
 };
 
-const updateChart = () => {
+function updateChart() {
   mapWidth = document.querySelector(".map").offsetWidth;
   const margin = { top: 10, right: 100, bottom: 30, left: 50 },
     width = mapWidth - margin.left - margin.right,
@@ -137,13 +216,39 @@ const updateChart = () => {
       })
     )
     .range([0, width]);
-  lineSvg
+  let xAxis = lineSvg
     .append("g")
     .attr("transform", `translate(0, ${height})`)
     .call(d3.axisBottom(x));
 
+  // Add a clipPath: everything out of this area won't be drawn.
+  var clip = lineSvg
+    .append("defs")
+    .append("svg:clipPath")
+    .attr("id", "clip")
+    .append("svg:rect")
+    .attr("width", width)
+    .attr("height", height)
+    .attr("x", 0)
+    .attr("y", 0);
+
+  // Add brushing
+  var brush = d3
+    .brushX() // Add the brush feature using the d3.brush function
+    .extent([
+      [0, 0],
+      [width, height],
+    ]) // initialise the brush area: start at 0,0 and finishes at width,height: it means I select the whole graph area
+    .on("end", resizeChart); // Each time the brush selection changes, trigger the 'updateChart' function
+
+  // Create the line variable: where both the line and the brush take place
+  var line = lineSvg.append("g").attr("clip-path", "url(#clip)");
+
+  let y = null;
+  let path = null;
+
   if (selectedCountries.length == 0) {
-    const y = d3
+    y = d3
       .scaleLinear()
       .domain([
         0,
@@ -153,13 +258,16 @@ const updateChart = () => {
       ])
       .range([height, 0]);
     lineSvg.append("g").call(d3.axisLeft(y));
-    path = lineSvg.append("path");
+
+    // Add the line
+    path = line.append("path");
 
     path
       .datum(rollup)
+      .attr("class", "line") // I add the class line to be able to modify this line later on.
       .attr("fill", "none")
       .attr("stroke", "#d04b4b")
-      .attr("stroke-width", 1.5)
+      .attr("stroke-width", 2)
       .attr(
         "d",
         d3
@@ -170,7 +278,6 @@ const updateChart = () => {
           .y(function (d) {
             return y(d[1]);
           })
-          .curve(d3.curveBasis)
       );
   } else {
     let lineColor = d3
@@ -195,21 +302,21 @@ const updateChart = () => {
     let max = d3.max(all_country_data, function (d) {
       return parseInt(d.cases);
     });
+    y = d3.scaleLinear().domain([0, max]).range([height, 0]);
+    lineSvg.append("g").call(d3.axisLeft(y));
 
     selectedCountries.forEach((item, idx) => {
-      const y = d3.scaleLinear().domain([0, max]).range([height, 0]);
-      lineSvg.append("g").call(d3.axisLeft(y));
       countryData = new_data.filter((data) => data.iso_code == item);
-      let rollup = calculateRollup(countryData, "date").casesRollup;
-      path = lineSvg.append("path");
 
-      console.log(idx);
+      // Add the line
+      path = line.append("path");
 
       path
         .datum(countryData)
+        .attr("class", "line")
         .attr("fill", "none")
         .attr("stroke", lineColor(idx))
-        .attr("stroke-width", 1.5)
+        .attr("stroke-width", 2)
         .attr(
           "d",
           d3
@@ -220,9 +327,67 @@ const updateChart = () => {
             .y(function (d) {
               return y(d.cases);
             })
-            .curve(d3.curveBasis)
         );
     });
+  }
+  // Add the brushing
+  line.append("g").attr("class", "brush").call(brush);
+
+  // A function that set idleTimeOut to null
+  var idleTimeout;
+  function idled() {
+    idleTimeout = null;
+  }
+
+  function resizeChart(e) {
+    // What are the selected boundaries?
+    extent = e.selection;
+
+    // If no selection, back to initial coordinate. Otherwise, update X axis domain
+    if (!extent) {
+      if (!idleTimeout) return (idleTimeout = setTimeout(idled, 350)); // This allows to wait a little bit
+      x.domain([4, 8]);
+    } else {
+      x.domain([x.invert(extent[0]), x.invert(extent[1])]);
+      line.select(".brush").call(brush.move, null); // This remove the grey brush area as soon as the selection has been done
+    }
+
+    // Update axis and line position
+    xAxis.transition().duration(1000).call(d3.axisBottom(x));
+
+    if (selectedCountries.length == 0) {
+      line
+        .select(".line")
+        .transition()
+        .duration(1000)
+        .attr(
+          "d",
+          d3
+            .line()
+            .x(function (d) {
+              return x(d[0]);
+            })
+            .y(function (d) {
+              return y(d[1]);
+            })
+        );
+    } else {
+      line
+        .selectAll(".line")
+        .transition()
+        .duration(1000)
+        .attr(
+          "d",
+          d3
+            .line()
+            .x(function (d) {
+              return x(d.date);
+            })
+            .y(function (d) {
+              return y(d.cases);
+            })
+        );
+    }
   }
 
   const pathLength = path.node().getTotalLength();
@@ -234,7 +399,7 @@ const updateChart = () => {
     .attr("stroke-dasharray", pathLength)
     .transition(transitionPath)
     .attr("stroke-dashoffset", 0);
-};
+}
 
 const loadMap = (mapData) => {
   mapSvg = d3.select("#view").append("svg").attr("id", "map");
@@ -275,6 +440,12 @@ const loadMap = (mapData) => {
     .on("click", function (e, d) {
       let checkbox = getCountryText(d.id).node().children[0];
       checkbox.checked = !checkbox.checked;
+
+      if (checkbox.checked) {
+        addSelectedCountry(d.id);
+      } else {
+        removeSelectedCountry(d.id);
+      }
     });
   mapSvg.attr("height", document.getElementById("map").getBBox().height + 10);
 };
@@ -455,141 +626,5 @@ getData().then((res) => {
   getMap().then((map) => {
     mapData = map;
     loadMap(mapData);
-
-    // const margin = { top: 10, right: 30, bottom: 30, left: 60 },
-    //   width = window.document.body.clientWidth - 128,
-    //   height = 200;
-
-    // worldData = data.filter((item) => item.location == "World");
-
-    // // append the svg object to the body of the page
-    // const linesvg = d3
-    //   .select("#my_graph")
-    //   .append("svg")
-    //   .attr("width", width)
-    //   .attr("height", height + margin.top + margin.bottom)
-    //   .append("g")
-    //   .attr("transform", `translate(${margin.left},${margin.top})`);
-
-    // // Add X axis --> it is a date format
-    // const x = d3
-    //   .scaleTime()
-    //   .domain(d3.extent(worldData, (d) => d.date))
-    //   .range([0, width]);
-    // xAxis = linesvg
-    //   .append("g")
-    //   .attr("transform", `translate(0,${height})`)
-    //   .call(d3.axisBottom(x));
-
-    // // Add Y axis
-    // const y = d3
-    //   .scaleLinear()
-    //   .domain([0, d3.max(worldData, (d) => +d.vaccinations)])
-    //   .range([height, 0]);
-    // yAxis = linesvg.append("g").call(d3.axisLeft(y));
-
-    // // Add a clipPath: everything out of this area won't be drawn.
-    // const clip = linesvg
-    //   .append("defs")
-    //   .append("clipPath")
-    //   .attr("id", "clip")
-    //   .append("rect")
-    //   .attr("width", width)
-    //   .attr("height", height)
-    //   .attr("x", 0)
-    //   .attr("y", 0);
-
-    // // Add brushing
-    // const brush = d3
-    //   .brushX() // Add the brush feature using the d3.brush function
-    //   .extent([
-    //     [0, 0],
-    //     [width, height],
-    //   ]) // initialise the brush area: start at 0,0 and finishes at width,height: it means I select the whole graph area
-    //   .on("end", updateChart); // Each time the brush selection changes, trigger the 'updateChart' function
-
-    // // Create the area variable: where both the area and the brush take place
-    // const area = linesvg.append("g").attr("clip-path", "url(#clip)");
-
-    // // Create an area generator
-    // const areaGenerator = d3
-    //   .area()
-    //   .x((d) => x(d.date))
-    //   .y0(y(0))
-    //   .y1((d) => y(d.cases));
-
-    // // Add the area
-    // area
-    //   .append("path")
-    //   .datum(worldData)
-    //   .attr("class", "myArea") // I add the class myArea to be able to modify it later on.
-    //   .attr("fill", "rgb(228, 23, 23)")
-    //   .attr("fill-opacity", 0.2)
-    //   .attr("stroke", "#D04B4B")
-    //   .attr("stroke-width", 2)
-    //   .attr("d", areaGenerator);
-
-    // const area2 = linesvg.append("g").attr("clip-path", "url(#clip)");
-    // const areaGenerator2 = d3
-    //   .area()
-    //   .x((d) => x(d.date))
-    //   .y0(y(0))
-    //   .y1((d) => y(d.vaccinations));
-
-    // // Add the area
-    // area2
-    //   .append("path")
-    //   .datum(worldData)
-    //   .attr("class", "myArea") // I add the class myArea to be able to modify it later on.
-    //   .attr("fill", "rgb(86, 75, 208)")
-    //   .attr("fill-opacity", 0.2)
-    //   .attr("stroke", "#564BD0")
-    //   .attr("stroke-width", 2)
-    //   .attr("d", areaGenerator2);
-
-    // area2.append("g").attr("class", "brush").call(brush);
-    // // area2.append("g").attr("class", "brush").call(brush);
-
-    // // A function that set idleTimeOut to null
-    // let idleTimeout;
-    // function idled() {
-    //   idleTimeout = null;
-    // }
-
-    // // A function that update the chart for given boundaries
-    // function updateChart(event) {
-    //   // What are the selected boundaries?
-    //   extent = event.selection;
-
-    //   // If no selection, back to initial coordinate. Otherwise, update X axis domain
-    //   if (!extent) {
-    //     if (!idleTimeout) return (idleTimeout = setTimeout(idled, 350)); // This allows to wait a little bit
-    //     x.domain([4, 8]);
-    //   } else {
-    //     x.domain([x.invert(extent[0]), x.invert(extent[1])]);
-    //     area2.select(".brush").call(brush.move, null); // This remove the grey brush area as soon as the selection has been done
-    //   }
-
-    //   // Update axis and area position
-    //   xAxis.transition().duration(1000).call(d3.axisBottom(x));
-    //   area
-    //     .select(".myArea")
-    //     .transition()
-    //     .duration(1000)
-    //     .attr("d", areaGenerator);
-    //   area2
-    //     .select(".myArea")
-    //     .transition()
-    //     .duration(1000)
-    //     .attr("d", areaGenerator2);
-    // }
-
-    // // If user double click, reinitialize the chart
-    // linesvg.on("dblclick", function () {
-    //   x.domain(d3.extent(worldData, (d) => d.date));
-    //   xAxis.transition().call(d3.axisBottom(x));
-    //   area.select(".myArea").transition().attr("d", areaGenerator);
-    //   area2.select(".myArea").transition().attr("d", areaGenerator2);
-    // });
   });
 });

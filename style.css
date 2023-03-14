@@ -47,6 +47,10 @@ select {
   display: flex;
   flex-direction: column;
   align-items: center;
+  background-color: white;
+  border: 1px solid var(--stroke);
+  padding: 2rem;
+  border-radius: 10px;
   /* background-color: white;
   border: 1px solid var(--stroke);
   padding: 1rem; */
@@ -172,7 +176,7 @@ select {
 
 .container {
   margin: 0 auto;
-  padding: 0 8rem;
+  padding: 0 4rem;
 }
 
 .header {
@@ -293,10 +297,6 @@ select {
 }
 
 .view {
-  background-color: white;
-  border: 1px solid var(--stroke);
-  padding: 2rem;
-  border-radius: 10px;
 }
 
 .view__title {
@@ -313,6 +313,7 @@ select {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
+  width: 100%;
 }
 
 .view__divider {
@@ -331,4 +332,21 @@ select {
 
 .tick text {
   fill: #bdbdbd;
+}
+
+circle {
+  fill: indianred;
+  opacity: 0.3;
+  stroke: white;
+}
+.country-text {
+  fill: white;
+  font-size: 10px;
+  text-anchor: middle;
+  cursor: default;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  pointer-events: none;
 }
