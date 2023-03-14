@@ -4,6 +4,7 @@ let casesRollup = null;
 let sortedRollup = null;
 let mapSvg = null;
 let view = document.getElementById("view");
+let filteredCountries = [];
 let selectedCountries = [];
 
 //   https://www.vis4.net/blog/2013/09/mastering-multi-hued-color-scales/
@@ -54,7 +55,7 @@ const dataLink =
   "https://raw.githubusercontent.com/owid/covid-19-data/master/public/data/owid-covid-data.csv";
 
 const getData = async () => {
-  const data = await d3.csv("new_cases.csv", (d) => {
+  const data = await d3.csv("filtered_cases.csv", (d) => {
     return {
       iso_code: d.iso_code,
       location: d.location,
@@ -87,9 +88,9 @@ const loadChart = (mapData) => {
   // set the dimensions and margins of the graph
   d3.select("#view").selectAll("svg").remove();
   mapWidth = document.querySelector(".map").offsetWidth;
-  const margin = { top: 10, right: 30, bottom: 30, left: 10 },
-    width = 1000 - margin.left - margin.right,
-    height = mapWidth - margin.top - margin.bottom;
+  const margin = { top: 10, right: 100, bottom: 30, left: 55 },
+    width = mapWidth - margin.left - margin.right,
+    height = 500 - margin.top - margin.bottom;
 
   // append the svg object to the body of the page
   const lineSvg = d3
@@ -103,20 +104,31 @@ const loadChart = (mapData) => {
   updateChart();
 };
 
+const addSelectedCountry = (id) => {
+  selectedCountries.push(id);
+
+  updateChart();
+};
+
+const removeSelectedCountry = (id) => {
+  selectedCountries = selectedCountries.filter((item) => item != id);
+  updateChart();
+};
+
 const updateChart = () => {
-  const margin = { top: 10, right: 30, bottom: 30, left: 60 },
-    width = 1000 - margin.left - margin.right,
-    height = 600 - margin.top - margin.bottom;
+  mapWidth = document.querySelector(".map").offsetWidth;
+  const margin = { top: 10, right: 100, bottom: 30, left: 50 },
+    width = mapWidth - margin.left - margin.right,
+    height = 500 - margin.top - margin.bottom;
   const lineSvg = d3.select("#view").select("g");
   lineSvg.selectAll("g").remove();
   lineSvg.selectAll("path").remove();
   let new_data = data.filter((item) =>
-    selectedCountries.includes(item.location)
+    filteredCountries.includes(item.iso_code)
   );
 
   let rollup = calculateRollup(new_data, "date").casesRollup;
 
-  // Add X axis --> it is a date format
   const x = d3
     .scaleTime()
     .domain(
@@ -130,40 +142,92 @@ const updateChart = () => {
     .attr("transform", `translate(0, ${height})`)
     .call(d3.axisBottom(x));
 
-  // Add Y axis
-  const y = d3
-    .scaleLinear()
-    .domain([
-      0,
-      d3.max(rollup, function (d) {
-        return d[1];
-      }),
-    ])
-    .range([height, 0]);
-  lineSvg.append("g").call(d3.axisLeft(y));
-  path = lineSvg.append("path");
+  if (selectedCountries.length == 0) {
+    const y = d3
+      .scaleLinear()
+      .domain([
+        0,
+        d3.max(rollup, function (d) {
+          return d[1];
+        }),
+      ])
+      .range([height, 0]);
+    lineSvg.append("g").call(d3.axisLeft(y));
+    path = lineSvg.append("path");
 
-  path
-    .datum(rollup)
-    .attr("fill", "none")
-    .attr("stroke", "#d04b4b")
-    .attr("stroke-width", 1.5)
-    .attr(
-      "d",
-      d3
-        .line()
-        .x(function (d) {
-          return x(d[0]);
-        })
-        .y(function (d) {
-          return y(d[1]);
-        })
-        .curve(d3.curveBasis)
+    path
+      .datum(rollup)
+      .attr("fill", "none")
+      .attr("stroke", "#d04b4b")
+      .attr("stroke-width", 1.5)
+      .attr(
+        "d",
+        d3
+          .line()
+          .x(function (d) {
+            return x(d[0]);
+          })
+          .y(function (d) {
+            return y(d[1]);
+          })
+          .curve(d3.curveBasis)
+      );
+  } else {
+    let lineColor = d3
+      .scaleSequential()
+      .domain([0, selectedCountries.length])
+      .range([
+        "#1f77b4",
+        "#ff7f0e",
+        "#2ca02c",
+        "#d62728",
+        "#9467bd",
+        "#8c564b",
+        "#e377c2",
+        "#7f7f7f",
+        "#bcbd22",
+        "#17becf",
+      ]);
+    all_country_data = new_data.filter((item) =>
+      selectedCountries.includes(item.iso_code)
     );
+
+    let max = d3.max(all_country_data, function (d) {
+      return parseInt(d.cases);
+    });
+
+    selectedCountries.forEach((item, idx) => {
+      const y = d3.scaleLinear().domain([0, max]).range([height, 0]);
+      lineSvg.append("g").call(d3.axisLeft(y));
+      countryData = new_data.filter((data) => data.iso_code == item);
+      let rollup = calculateRollup(countryData, "date").casesRollup;
+      path = lineSvg.append("path");
+
+      console.log(idx);
+
+      path
+        .datum(countryData)
+        .attr("fill", "none")
+        .attr("stroke", lineColor(idx))
+        .attr("stroke-width", 1.5)
+        .attr(
+          "d",
+          d3
+            .line()
+            .x(function (d) {
+              return x(d.date);
+            })
+            .y(function (d) {
+              return y(d.cases);
+            })
+            .curve(d3.curveBasis)
+        );
+    });
+  }
 
   const pathLength = path.node().getTotalLength();
 
-  const transitionPath = d3.transition().ease(d3.easeSin).duration(4000);
+  const transitionPath = d3.transition().ease(d3.easeSin).duration(2000);
 
   path
     .attr("stroke-dashoffset", pathLength)
@@ -176,7 +240,7 @@ const loadMap = (mapData) => {
   mapSvg = d3.select("#view").append("svg").attr("id", "map");
   mapWidth = document.querySelector(".map").offsetWidth;
   mapSvg.attr("width", mapWidth);
-  mapSvg.attr("height", 700);
+  mapSvg.attr("height", 750);
   let width = +mapSvg.attr("width");
   let height = +mapSvg.attr("height");
   const projection = d3
@@ -185,7 +249,7 @@ const loadMap = (mapData) => {
     .scale(100)
     .translate([width / 2, height / 2]);
 
-  projection.fitSize([mapWidth, 700], mapData);
+  projection.fitSize([mapWidth, 750], mapData);
 
   let map = mapSvg
     .on("wheel", function (e) {
@@ -226,10 +290,23 @@ const loadCountryText = (data) => {
         g = enter
           .append("li")
           .attr("class", "country-item")
-          .attr("data-country", (d) => d.key);
+          .attr("data-country", (d) => d.key)
+          .on("click", function (e, d) {
+            let checkbox = getCountryText(d.key).node().children[0];
+            checkbox.checked = !checkbox.checked;
+
+            if (checkbox.checked) {
+              addSelectedCountry(d.key);
+            } else {
+              removeSelectedCountry(d.key);
+            }
+          });
         g.append("input")
           .attr("type", "checkbox")
-          .attr("class", "country-item__check");
+          .attr("class", "country-item__check")
+          .on("click", function () {
+            this.checked = !this.checked;
+          });
 
         g.append("span")
           .attr("class", "country-item__indicator")
@@ -306,20 +383,20 @@ const updateData = () => {
 const updateContinent = (continent) => {
   if (continent == "World") {
     new_data = data;
-    selectedCountries = selectedCountries = Array.from(
+    filteredCountries = Array.from(
       new Set(
         data
           .filter((item) => item.iso_code.length <= 3)
-          .map((item) => item.location)
+          .map((item) => item.iso_code)
       )
     );
   } else {
     new_data = data.filter((item) => item.continent == continent);
-    selectedCountries = Array.from(
+    filteredCountries = Array.from(
       new Set(
         data
           .filter((item) => item.continent == continent)
-          .map((item) => item.location)
+          .map((item) => item.iso_code)
       )
     );
   }
@@ -327,7 +404,7 @@ const updateContinent = (continent) => {
   updateData();
   sortedRollup = calculateRollup(new_data, "iso_code").sortedRollup;
   loadCountryText(sortedRollup);
-  updateChart();
+  // updateChart();
 
   mapSvg
     .select("g")
@@ -367,13 +444,14 @@ getData().then((res) => {
   data = res;
   updateData();
   loadCountryText(sortedRollup);
-  selectedCountries = Array.from(
+  filteredCountries = Array.from(
     new Set(
       data
         .filter((item) => item.iso_code.length <= 3)
-        .map((item) => item.location)
+        .map((item) => item.iso_code)
     )
   );
+
   getMap().then((map) => {
     mapData = map;
     loadMap(mapData);
