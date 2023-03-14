@@ -14,6 +14,19 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="style.css" />
+    <script src="https://code.jquery.com/jquery-3.6.0.js"></script>
+    <script src="https://code.jquery.com/ui/1.13.2/jquery-ui.js"></script>
+    <link
+      rel="stylesheet"
+      href="//code.jquery.com/ui/1.13.2/themes/base/jquery-ui.css"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.3.0/css/all.min.css"
+      integrity="sha512-SzlrxWUlpfuzQ+pcUCosxcglQRNAq/DZjVsC0lE40xsADsfeQoEypE+enwcOiGjk/bSuGGKHEyjSoQ1zVisanQ=="
+      crossorigin="anonymous"
+      referrerpolicy="no-referrer"
+    />
   </head>
   <body>
     <header class="header">
@@ -27,18 +40,28 @@
           <div class="view__header">
             <div class="view__title">
               <h1>Total Cases</h1>
-              <h2 class="view__subtitle">300,000</h2>
+              <h2 class="view__subtitle" id="total"></h2>
             </div>
 
             <ul class="chart-or-map">
               <li class="active toggle-view" data-view="map">Map</li>
               <li class="toggle-view" data-view="chart">Chart</li>
               <li class="toggle-view" data-view="continentor">Continentor</li>
+              <li class="toggle-view" data-view="gdp">GDP</li>
             </ul>
           </div>
           <div class="view" id="view">
             <!-- <hr class="divider view__divider" /> -->
           </div>
+          <div class="date-range">
+            <span id="startDate"></span>
+            <div id="slider-range" class="slider-range"></div>
+            <span id="endDate"></span>
+          </div>
+
+          <button class="simulation-button" id="simulation-button">
+            <i class="fa-solid fa-play"></i> <span>Play Simulation</span>
+          </button>
         </div>
         <div class="countries-list shadow">
           <div class="continent-input">

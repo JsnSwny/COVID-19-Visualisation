@@ -350,3 +350,52 @@ circle {
   user-select: none;
   pointer-events: none;
 }
+
+.slider-range {
+  width: 100%;
+  margin: 0 2rem;
+}
+
+.ui-slider-handle {
+  background-color: white !important;
+  border: 2px solid var(--primary) !important;
+  border-radius: 50% !important;
+  top: -0.6em !important;
+  width: 1.8em !important;
+  height: 1.8em !important;
+}
+
+.ui-widget-header {
+  background-color: var(--primary) !important;
+}
+
+.date-range {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  align-items: center;
+  margin-top: 2rem;
+}
+
+.date-range span {
+  font-size: 14px;
+  /* font-weight: bold; */
+}
+
+.simulation-button {
+  background-color: rgb(3, 177, 58);
+  border: none;
+  color: white;
+  padding: 1rem;
+  margin-top: 1rem;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.simulation-button.playing {
+  background-color: var(--primary);
+}
+
+.simulation-button i {
+  margin-right: 10px;
+}

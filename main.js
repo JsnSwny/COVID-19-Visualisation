@@ -4,9 +4,13 @@ let casesRollup = null;
 let sortedRollup = null;
 let mapSvg = null;
 let view = document.getElementById("view");
+let filteredData = null;
 let filteredCountries = [];
 let selectedCountries = [];
 let currentView = "map";
+let filterDateMin = null;
+let filterDateMax = null;
+let isSimulating = false;
 
 //   https://www.vis4.net/blog/2013/09/mastering-multi-hued-color-scales/
 var color = d3
@@ -118,8 +122,6 @@ const loadContinentor = () => {
   var packLayout = d3.pack().size([r, r]);
 
   var rootNode = d3.hierarchy(rollup);
-  console.log(rootNode);
-
   rootNode.sum(function (d) {
     return d[1];
   });
@@ -344,11 +346,14 @@ function updateChart() {
     extent = e.selection;
 
     // If no selection, back to initial coordinate. Otherwise, update X axis domain
-    if (!extent) {
+    if (!e.selection) {
       if (!idleTimeout) return (idleTimeout = setTimeout(idled, 350)); // This allows to wait a little bit
       x.domain([4, 8]);
     } else {
-      x.domain([x.invert(extent[0]), x.invert(extent[1])]);
+      filterDateMin = x.invert(e.selection[0]);
+      filterDateMax = x.invert(e.selection[1]);
+      filterDataByDate(filteredData);
+      x.domain([filterDateMin, filterDateMax]);
       line.select(".brush").call(brush.move, null); // This remove the grey brush area as soon as the selection has been done
     }
 
@@ -390,15 +395,15 @@ function updateChart() {
     }
   }
 
-  const pathLength = path.node().getTotalLength();
+  // const pathLength = path.node().getTotalLength();
 
-  const transitionPath = d3.transition().ease(d3.easeSin).duration(2000);
+  // const transitionPath = d3.transition().ease(d3.easeSin).duration(2000);
 
-  path
-    .attr("stroke-dashoffset", pathLength)
-    .attr("stroke-dasharray", pathLength)
-    .transition(transitionPath)
-    .attr("stroke-dashoffset", 0);
+  // path
+  //   .attr("stroke-dashoffset", pathLength)
+  //   .attr("stroke-dasharray", pathLength)
+  //   .transition(transitionPath)
+  //   .attr("stroke-dashoffset", 0);
 }
 
 const loadMap = (mapData) => {
@@ -450,8 +455,16 @@ const loadMap = (mapData) => {
   mapSvg.attr("height", document.getElementById("map").getBBox().height + 10);
 };
 
+const updateMap = () => {
+  d3.selectAll(".country")
+    .transition()
+    .duration(50)
+    .attr("fill", (d) => {
+      return color(casesRollup.get(d.id));
+    });
+};
+
 const loadCountryText = (data) => {
-  console.log(data);
   var g = d3
     .select("#countries_list")
     .selectAll("li")
@@ -497,17 +510,33 @@ const loadCountryText = (data) => {
 
         countryText
           .append("span")
+          .attr("class", "country-text-name")
           .text((d) => countryToCode[d.key])
           .style("font-weight", "bold");
 
         countryText
           .append("span")
+          .attr("class", "country-text-value")
           .text((d) => d.value.toLocaleString())
           .style("flex", 1)
           .style("text-align", "right");
         return g;
       },
       function (update) {
+        update.attr("data-country", (d) => d.key);
+        update
+          .select(".country-text-value")
+          .text((d) => d.value.toLocaleString());
+        update.select(".country-text-name").text((d) => countryToCode[d.key]);
+
+        update
+          .select(".country-item__indicator")
+          .style("background-color", (d) => color(d.value));
+
+        update
+          .select(".country-item__image")
+          .attr("src", (d) => `flags/4x3/${d.key.toLowerCase()}.svg`);
+
         return;
       },
       function (exit) {
@@ -537,26 +566,33 @@ const updateData = () => {
   // project.fitSize([900, 500], geojson);
   // Load external data and boot
 
-  countryToCode = data.reduce((result, item) => {
+  countryToCode = filteredData.reduce((result, item) => {
     result[item.iso_code] = item.location;
     return result;
   }, {});
 
-  codeToContinent = data.reduce((result, item) => {
+  codeToContinent = filteredData.reduce((result, item) => {
     result[item.iso_code] = item.continent;
     return result;
   }, {});
 
-  sortedRollup = calculateRollup(data, "iso_code").sortedRollup;
-  casesRollup = calculateRollup(data, "iso_code").casesRollup;
+  sortedRollup = calculateRollup(filteredData, "iso_code").sortedRollup;
+  casesRollup = calculateRollup(filteredData, "iso_code").casesRollup;
+
+  d3.select("#total").text(
+    sortedRollup
+      .map((item) => item.value)
+      .reduce((a, b) => a + b, 0)
+      .toLocaleString()
+  );
+  loadCountryText(sortedRollup);
 };
 
 const updateContinent = (continent) => {
   if (continent == "World") {
-    new_data = data;
     filteredCountries = Array.from(
       new Set(
-        data
+        filteredData
           .filter((item) => item.iso_code.length <= 3)
           .map((item) => item.iso_code)
       )
@@ -565,17 +601,14 @@ const updateContinent = (continent) => {
     new_data = data.filter((item) => item.continent == continent);
     filteredCountries = Array.from(
       new Set(
-        data
+        filteredData
           .filter((item) => item.continent == continent)
           .map((item) => item.iso_code)
       )
     );
   }
-
+  filterDataByDate(new_data);
   updateData();
-  sortedRollup = calculateRollup(new_data, "iso_code").sortedRollup;
-  loadCountryText(sortedRollup);
-  // updateChart();
 
   mapSvg
     .select("g")
@@ -586,7 +619,6 @@ const updateContinent = (continent) => {
         enter.append("path");
       },
       function (update) {
-        console.log(codeToContinent);
         update
           .transition()
           .duration(1000)
@@ -611,9 +643,61 @@ continentSelect.addEventListener("change", () => {
   updateContinent(continentSelect.value);
 });
 
+const filterDataByDate = (data) => {
+  filteredData = data.filter(
+    (item) => item.date >= filterDateMin && item.date <= filterDateMax
+  );
+  updateData();
+  updateSlider();
+};
+
+const simulationButton = document.getElementById("simulation-button");
+
+simulationButton.addEventListener("click", () => {
+  isSimulating = !isSimulating;
+
+  if (isSimulating) {
+    console.log(simulationButton.querySelector("span"));
+    simulationButton.classList.toggle("playing");
+    simulationButton.querySelector("span").innerHTML = "Pause Simulation";
+    simulationButton.querySelector("i").classList = "fa-solid fa-pause";
+  } else {
+    simulationButton.querySelector("span").innerHTML = "Play Simulation";
+    simulationButton.classList.toggle("playing");
+    simulationButton.querySelector("i").classList = "fa-solid fa-play";
+  }
+});
+
+const updateSlider = () => {
+  $("#slider-range").slider("values", 0, filterDateMin.getTime() / 1000);
+  $("#slider-range").slider("values", 1, filterDateMax.getTime() / 1000);
+  $("#startDate").html(
+    new Date($("#slider-range").slider("values", 0) * 1000).toLocaleDateString(
+      "en-GB",
+      {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }
+    )
+  );
+  $("#endDate").html(
+    new Date($("#slider-range").slider("values", 1) * 1000).toLocaleDateString(
+      "en-GB",
+      {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }
+    )
+  );
+};
+
 getData().then((res) => {
   data = res;
+  filteredData = res;
   updateData();
+
   loadCountryText(sortedRollup);
   filteredCountries = Array.from(
     new Set(
@@ -626,5 +710,78 @@ getData().then((res) => {
   getMap().then((map) => {
     mapData = map;
     loadMap(mapData);
+
+    let dataExtent = d3.extent(data, function (d) {
+      return d.date;
+    });
+    $(function () {
+      filterDateMin = new Date(dataExtent[0]);
+      filterDateMax = new Date(dataExtent[0]);
+      $("#slider-range").slider({
+        range: true,
+        min: dataExtent[0].getTime() / 1000,
+        max: dataExtent[1].getTime() / 1000,
+        step: 86400,
+        values: [
+          dataExtent[0].getTime() / 1000,
+          dataExtent[1].getTime() / 1000,
+        ],
+        slide: function (event, ui) {
+          $("#startDate").html(
+            new Date(
+              $("#slider-range").slider("values", 0) * 1000
+            ).toLocaleDateString("en-GB", {
+              year: "numeric",
+              month: "2-digit",
+              day: "2-digit",
+            })
+          );
+          $("#endDate").html(
+            new Date(
+              $("#slider-range").slider("values", 1) * 1000
+            ).toLocaleDateString("en-GB", {
+              year: "numeric",
+              month: "2-digit",
+              day: "2-digit",
+            })
+          );
+        },
+        stop: function (event, ui) {
+          filterDateMin = new Date(ui.values[0] * 1000);
+          filterDateMax = new Date(ui.values[1] * 1000);
+          filterDataByDate(data);
+          updateMap();
+          updateData();
+        },
+      });
+      $("#startDate").html(
+        new Date(
+          $("#slider-range").slider("values", 0) * 1000
+        ).toLocaleDateString("en-GB", {
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        })
+      );
+      $("#endDate").html(
+        new Date(
+          $("#slider-range").slider("values", 1) * 1000
+        ).toLocaleDateString("en-GB", {
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        })
+      );
+    });
   });
+
+  setInterval(() => {
+    if (isSimulating) {
+      filterDateMax.setDate(filterDateMax.getDate() + 7);
+      filterDataByDate(data);
+      updateMap();
+      updateData();
+      updateSlider();
+    }
+  }, 100);
 });
