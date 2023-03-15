@@ -92,11 +92,17 @@ const toggleViews = document.querySelectorAll(".toggle-view");
 
 const updateView = () => {
   switch (currentView) {
-    case "chart":
-      updateChart();
+    case "map":
+      updateMap();
       break;
     case "gdp":
       loadGDP();
+      break;
+    case "chart":
+      loadChart();
+      break;
+    case "continentor":
+      updateContinentor();
       break;
   }
 };
@@ -125,6 +131,8 @@ toggleViews.forEach((item) => {
 });
 
 const loadGDP = () => {
+  d3.select("#view").selectAll("svg").remove();
+  d3.select("#legend-container").selectAll("div").remove();
   mapWidth = document.querySelector(".map").offsetWidth;
   mapHeight = document.querySelector(".view").offsetHeight;
   // set the dimensions and margins of the graph
@@ -204,15 +212,36 @@ const loadGDP = () => {
     .append("g")
     .selectAll("dot")
     .data(filteredRollupData)
-    .join("circle")
-    .attr("cx", function (d) {
-      return x(d[1].average_gdp);
-    })
-    .attr("cy", function (d) {
-      return y(d[1].average_cases_per_million);
-    })
-    .attr("r", 3)
-    .style("fill", (d) => continentColor(d[1].continent));
+    .join(
+      function (enter) {
+        g = enter
+          .append("circle")
+          .attr("cx", function (d) {
+            return x(d[1].average_gdp);
+          })
+          .attr("cy", function (d) {
+            return y(d[1].average_cases_per_million);
+          })
+          .attr("r", 3)
+          .style("fill", (d) => continentColor(d[1].continent));
+        return g;
+      },
+      function (update) {
+        let circle = update;
+        circle
+          .attr("cx", function (d) {
+            return x(d[1].average_gdp);
+          })
+          .attr("cy", function (d) {
+            return y(d[1].average_cases_per_million);
+          });
+
+        return;
+      },
+      function (exit) {
+        return exit.remove();
+      }
+    );
 
   const legend = d3.select("#legend-container");
 
@@ -239,8 +268,16 @@ const loadContinentor = () => {
     .attr("class", "continentor");
   lineSvg = lineSvg.append("g");
 
-  let node = null;
-  let rollup = data.filter((item) => item.iso_code.length <= 3);
+  console.log("load continentor");
+
+  updateContinentor();
+};
+
+const updateContinentor = () => {
+  d3.select("#legend-container").selectAll("div").remove();
+  mapHeight = document.querySelector(".view").offsetHeight - 10;
+  let r = mapHeight;
+  let rollup = filteredData.filter((item) => item.iso_code.length <= 3);
 
   rollup = d3.rollup(
     rollup,
@@ -248,6 +285,8 @@ const loadContinentor = () => {
     (d) => d.continent,
     (d) => d.location
   );
+
+  console.log(rollup);
 
   var packLayout = d3.pack().size([r, r]);
 
@@ -258,45 +297,108 @@ const loadContinentor = () => {
 
   packLayout(rootNode);
 
+  let lineSvg = d3.select(".continentor").select("g");
+
+  console.log(rootNode.descendants());
+
   var nodes = lineSvg
     .selectAll("g")
     .data(rootNode.descendants())
-    .join("g")
-    .attr("transform", function (d) {
-      return "translate(" + [d.x, d.y] + ")";
-    });
+    .join(
+      function (enter) {
+        nodes = enter.append("g").attr("transform", function (d) {
+          return "translate(" + [d.x, d.y] + ")";
+        });
+        nodes
+          .append("circle")
+          .style("fill", (d) => {
+            switch (d.depth) {
+              case 1:
+                return continentColor(d.data[0]);
+              case 2:
+                return continentColor(d.parent.data[0]);
+              default:
+                return "#f1f1f1";
+            }
+          })
+          .style("stroke", (d) => {
+            if (d.depth == 0) {
+              return "#d9d9d9";
+            }
+          })
+          .style("stroke-width", (d) => {
+            if (d.depth == 0) {
+              return 2;
+            }
+          })
 
-  nodes
-    .append("circle")
-    .on("click", function (e, d) {
-      zoom(e, node == d ? root : d);
-      e.stopPropagation();
-    })
+          .on("mouseover", (e, d) => {
+            lineSvg
+              .append("text")
+              .attr("class", "country-text country-text--hover")
+              .text(() => {
+                if (d.children === undefined) {
+                  console.log(d);
+                  return d.data[0];
+                }
+              })
+              .attr("dx", d.x)
+              .attr("dy", d.y);
+          })
+          .on("mouseout", (e, d) => {
+            lineSvg.selectAll(".country-text--hover").remove();
+          })
+          .transition()
+          .duration(2000)
+          .attr("r", function (d) {
+            return d.r;
+          });
+      },
+      function (update) {
+        nodes = update
+          .transition()
+          .ease(d3.easeSin)
+          .duration(30)
+          .attr("transform", function (d) {
+            return "translate(" + [d.x, d.y] + ")";
+          })
+          .select("circle")
+          .attr("r", function (d) {
+            return d.r;
+          })
+          .style("fill", (d) => {
+            switch (d.depth) {
+              case 1:
+                return continentColor(d.data[0]);
+              case 2:
+                return continentColor(d.parent.data[0]);
+              default:
+                return "#f1f1f1";
+            }
+          });
+      },
+      function (exit) {
+        return exit.remove();
+      }
+    );
 
-    .on("mouseover", (e, d) => {
-      lineSvg
-        .append("text")
-        .attr("class", "country-text country-text--hover")
-        .text(() => {
-          if (d.children === undefined) {
-            return d.data[0];
-          }
-        })
-        .attr("dx", d.x)
-        .attr("dy", d.y);
-    })
-    .on("mouseout", (e, d) => {
-      lineSvg.selectAll(".country-text--hover").remove();
-    })
-    .transition()
-    .duration(2000)
-    .attr("r", function (d) {
-      return d.r;
-    });
+  const legend = d3.select("#legend-container");
+
+  continentColor.domain().forEach((continent, i) => {
+    let legendItem = legend.append("div").attr("class", "legend__item");
+    legendItem
+      .append("span")
+      .attr("width", 8)
+      .attr("height", 8)
+      .attr("class", "legend__color")
+      .style("background-color", continentColor(continent));
+    legendItem.append("span").text(continent).attr("class", "legend__text");
+  });
 };
 
 const loadChart = () => {
   // set the dimensions and margins of the graph
+  d3.select("#view").selectAll("svg").remove();
   mapHeight = document.querySelector(".view").offsetHeight;
   mapWidth = document.querySelector(".map").offsetWidth;
   const margin = { top: 10, right: 100, bottom: 30, left: 55 },
@@ -334,7 +436,7 @@ function updateChart() {
   const lineSvg = d3.select("#view").select("g");
   lineSvg.selectAll("g").remove();
   lineSvg.selectAll("path").remove();
-  let new_data = data.filter((item) =>
+  let new_data = filteredData.filter((item) =>
     filteredCountries.includes(item.iso_code)
   );
 
@@ -841,7 +943,7 @@ getData().then((res) => {
     });
     $(function () {
       filterDateMin = new Date(dataExtent[0]);
-      filterDateMax = new Date(dataExtent[0]);
+      filterDateMax = new Date(dataExtent[1]);
       $("#slider-range").slider({
         range: true,
         min: dataExtent[0].getTime() / 1000,
@@ -902,11 +1004,11 @@ getData().then((res) => {
 
   setInterval(() => {
     if (isSimulating) {
-      filterDateMax.setDate(filterDateMax.getDate() + 7);
+      filterDateMax.setDate(filterDateMax.getDate() + 30);
       filterDataByDate(data);
       updateView();
       updateData();
       updateSlider();
     }
-  }, 100);
+  }, 20);
 });

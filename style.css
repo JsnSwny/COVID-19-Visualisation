@@ -71,8 +71,7 @@ select {
 
   list-style-type: none;
 
-  max-width: 500px;
-  width: 100%;
+  width: 500px;
   align-items: flex-end;
   background-color: white;
   border: 1px solid var(--stroke);
@@ -338,7 +337,6 @@ select {
 }
 
 .continentor circle {
-  fill: indianred;
   opacity: 0.3;
   stroke: white;
 }
