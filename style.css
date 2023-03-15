@@ -3,6 +3,7 @@
   --purple: #ffffff;
   --stroke: #d9d9d9;
   --black: #232323;
+  --chart-color: #bdbdbd;
 }
 
 * {
@@ -70,7 +71,8 @@ select {
 
   list-style-type: none;
 
-  width: 35%;
+  max-width: 500px;
+  width: 100%;
   align-items: flex-end;
   background-color: white;
   border: 1px solid var(--stroke);
@@ -196,7 +198,7 @@ select {
 .map-section {
   display: flex;
   justify-content: space-between;
-  height: 750px;
+  height: calc(100vh - 7rem);
   gap: 2rem;
   margin-top: 5rem;
 }
@@ -297,6 +299,7 @@ select {
 }
 
 .view {
+  flex: 1;
 }
 
 .view__title {
@@ -334,7 +337,7 @@ select {
   fill: #bdbdbd;
 }
 
-circle {
+.continentor circle {
   fill: indianred;
   opacity: 0.3;
   stroke: white;
@@ -398,4 +401,32 @@ circle {
 
 .simulation-button i {
   margin-right: 10px;
+}
+
+.legend-container {
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.legend__item {
+  display: flex;
+  align-items: center;
+  margin-right: 10px;
+}
+
+.legend__color {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 4px;
+}
+
+.legend__text {
+  font-size: 12px;
+}
+
+.chart-labels {
+  fill: var(--chart-color);
 }

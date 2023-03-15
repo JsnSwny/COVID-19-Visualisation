@@ -43,6 +43,18 @@ var darkColor = d3
     "#000",
   ]);
 
+var continentColor = d3
+  .scaleOrdinal()
+  .domain([
+    "Europe",
+    "North America",
+    "South America",
+    "Oceania",
+    "Africa",
+    "Asia",
+  ])
+  .range(["#27A6DD", "#ED1B24", "#F8931F", "#009345", "#FFCD52", "#8CC63E"]);
+
 const getCountryText = (name) => {
   return d3.selectAll("[data-country]").filter(function () {
     return d3.select(this).attr("data-country") === name;
@@ -69,6 +81,8 @@ const getData = async () => {
       date: d3.timeParse("%Y-%m-%d")(d.date),
       cases: d.new_cases,
       vaccinations: d.new_vaccinations,
+      gdp: d.gdp_per_capita,
+      cases_per_million: d.new_cases_per_million,
     };
   });
   return data;
@@ -80,6 +94,9 @@ const updateView = () => {
   switch (currentView) {
     case "chart":
       updateChart();
+      break;
+    case "gdp":
+      loadGDP();
       break;
   }
 };
@@ -100,13 +117,126 @@ toggleViews.forEach((item) => {
       case "continentor":
         loadContinentor();
         break;
+      case "gdp":
+        loadGDP();
+        break;
     }
   });
 });
 
+const loadGDP = () => {
+  mapWidth = document.querySelector(".map").offsetWidth;
+  mapHeight = document.querySelector(".view").offsetHeight;
+  // set the dimensions and margins of the graph
+  const margin = { top: 10, right: 30, bottom: 60, left: 60 },
+    width = mapWidth - margin.left - margin.right,
+    height = mapHeight - margin.top - margin.bottom;
+
+  // append the svg object to the body of the page
+  const svg = d3
+    .select("#view")
+    .append("svg")
+    .attr("width", width + margin.left + margin.right)
+    .attr("height", height + margin.top + margin.bottom)
+    .append("g")
+    .attr("transform", `translate(${margin.left}, ${margin.top})`);
+
+  console.log("updating");
+
+  let data = filteredData.filter((item) => item.iso_code.length <= 3);
+  let rollupData = d3.rollup(
+    data,
+    (v) => ({
+      average_gdp: d3.mean(v, (d) => d.gdp),
+      average_cases_per_million: d3.mean(v, (d) => d.cases_per_million),
+      continent: v[0].continent,
+    }),
+    (d) => d.location
+  );
+
+  const maxValues = {
+    max_gdp: d3.max(rollupData.values(), (d) => d.average_gdp),
+    max_cases_per_million: d3.max(
+      rollupData.values(),
+      (d) => d.average_cases_per_million
+    ),
+  };
+
+  const filteredRollupData = d3.filter(
+    rollupData,
+    ([location, values]) => values.average_gdp != 0
+  );
+
+  const x = d3.scaleLinear().domain([0, maxValues.max_gdp]).range([0, width]);
+  svg
+    .append("g")
+    .attr("transform", `translate(0, ${height})`)
+    .call(d3.axisBottom(x));
+
+  // Add Y axis
+  const y = d3
+    .scaleLinear()
+    .domain([0, maxValues.max_cases_per_million])
+    .range([height, 0]);
+  svg.append("g").call(d3.axisLeft(y));
+
+  // X label
+  d3.select("#view svg")
+    .append("text")
+    .attr("x", width / 2 + 100)
+    .attr("y", height + 50)
+    .attr("text-anchor", "middle")
+    .attr("class", "chart-labels")
+    .style("font-size", 12)
+    .text("GDP Per Capita");
+
+  // Y label
+  d3.select("#view svg")
+    .append("text")
+    .attr("text-anchor", "middle")
+    .attr("transform", "translate(20," + height / 2 + ")rotate(-90)")
+    .style("font-size", 12)
+    .attr("class", "chart-labels")
+    .text("New Cases Per Million People");
+
+  // // Add dots
+  svg
+    .append("g")
+    .selectAll("dot")
+    .data(filteredRollupData)
+    .join("circle")
+    .attr("cx", function (d) {
+      return x(d[1].average_gdp);
+    })
+    .attr("cy", function (d) {
+      return y(d[1].average_cases_per_million);
+    })
+    .attr("r", 3)
+    .style("fill", (d) => continentColor(d[1].continent));
+
+  const legend = d3.select("#legend-container");
+
+  continentColor.domain().forEach((continent, i) => {
+    let legendItem = legend.append("div").attr("class", "legend__item");
+    legendItem
+      .append("span")
+      .attr("width", 8)
+      .attr("height", 8)
+      .attr("class", "legend__color")
+      .style("background-color", continentColor(continent));
+    legendItem.append("span").text(continent).attr("class", "legend__text");
+  });
+};
+
 const loadContinentor = () => {
-  let r = 600;
-  lineSvg = d3.select("#view").append("svg").attr("width", r).attr("height", r);
+  mapHeight = document.querySelector(".view").offsetHeight;
+  let r = mapHeight;
+  lineSvg = d3
+    .select("#view")
+    .append("svg")
+    .attr("width", r)
+    .attr("height", r)
+    .attr("class", "continentor");
   lineSvg = lineSvg.append("g");
 
   let node = null;
@@ -129,7 +259,6 @@ const loadContinentor = () => {
   packLayout(rootNode);
 
   var nodes = lineSvg
-
     .selectAll("g")
     .data(rootNode.descendants())
     .join("g")
@@ -168,11 +297,11 @@ const loadContinentor = () => {
 
 const loadChart = () => {
   // set the dimensions and margins of the graph
-
+  mapHeight = document.querySelector(".view").offsetHeight;
   mapWidth = document.querySelector(".map").offsetWidth;
   const margin = { top: 10, right: 100, bottom: 30, left: 55 },
     width = mapWidth - margin.left - margin.right,
-    height = 500 - margin.top - margin.bottom;
+    height = mapHeight - margin.top - margin.bottom;
 
   // append the svg object to the body of the page
   const lineSvg = d3
@@ -198,9 +327,10 @@ const removeSelectedCountry = (id) => {
 
 function updateChart() {
   mapWidth = document.querySelector(".map").offsetWidth;
+  mapHeight = document.querySelector(".view").offsetHeight;
   const margin = { top: 10, right: 100, bottom: 30, left: 50 },
     width = mapWidth - margin.left - margin.right,
-    height = 500 - margin.top - margin.bottom;
+    height = mapHeight - margin.top - margin.bottom;
   const lineSvg = d3.select("#view").select("g");
   lineSvg.selectAll("g").remove();
   lineSvg.selectAll("path").remove();
@@ -408,18 +538,13 @@ function updateChart() {
 
 const loadMap = (mapData) => {
   mapSvg = d3.select("#view").append("svg").attr("id", "map");
-  mapWidth = document.querySelector(".map").offsetWidth;
-  mapSvg.attr("width", mapWidth);
-  mapSvg.attr("height", 750);
-  let width = +mapSvg.attr("width");
-  let height = +mapSvg.attr("height");
-  const projection = d3
-    .geoNaturalEarth1()
-    .center([0, 5])
-    .scale(100)
-    .translate([width / 2, height / 2]);
-
-  projection.fitSize([mapWidth, 750], mapData);
+  let width = document.querySelector(".map").offsetWidth;
+  let height = document.querySelector(".view").offsetHeight;
+  mapSvg.attr("width", width);
+  mapSvg.attr("height", height);
+  const projection = d3.geoNaturalEarth1().translate([width / 2, height / 2]);
+  console.log([width, height]);
+  projection.fitSize([width, height], mapData);
 
   let map = mapSvg
     .on("wheel", function (e) {
@@ -452,7 +577,7 @@ const loadMap = (mapData) => {
         removeSelectedCountry(d.id);
       }
     });
-  mapSvg.attr("height", document.getElementById("map").getBBox().height + 10);
+  // mapSvg.attr("height", document.getElementById("map").getBBox().height + 10);
 };
 
 const updateMap = () => {
@@ -545,12 +670,12 @@ const loadCountryText = (data) => {
     );
 };
 
-const calculateRollup = (data, group_by) => {
+const calculateRollup = (data, group_by, sum_by = "cases") => {
   let casesRollup = data.filter((item) => item.iso_code.length <= 3);
 
   casesRollup = d3.rollup(
     casesRollup,
-    (v) => d3.sum(v, (d) => d.cases),
+    (v) => d3.sum(v, (d) => d[sum_by]),
     (d) => d[group_by]
   );
 
@@ -750,7 +875,7 @@ getData().then((res) => {
           filterDateMin = new Date(ui.values[0] * 1000);
           filterDateMax = new Date(ui.values[1] * 1000);
           filterDataByDate(data);
-          updateMap();
+          updateView();
           updateData();
         },
       });
@@ -779,7 +904,7 @@ getData().then((res) => {
     if (isSimulating) {
       filterDateMax.setDate(filterDateMax.getDate() + 7);
       filterDataByDate(data);
-      updateMap();
+      updateView();
       updateData();
       updateSlider();
     }
