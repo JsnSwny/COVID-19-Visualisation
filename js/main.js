@@ -1,3 +1,6 @@
+// Variables
+// -----------------------
+
 let data = null;
 let mapData = null;
 let casesRollup = null;
@@ -12,8 +15,15 @@ let filterDateMin = null;
 let filterDateMax = null;
 let isSimulating = false;
 let dateExtents = null;
-const continentSelect = document.getElementById("continent-selector");
-let chartDisplay = ["Cases"];
+const continentSelect = document.getElementById("continent-selector"); // Continent selector dropdown
+let chartDisplay = ["Cases"]; // Default for chart metrics to be displayed
+const toggleViews = document.querySelectorAll(".toggle-view"); // Get all view tabs (Map, Chart etc.)
+const simulationButton = document.getElementById("simulation-button");
+
+// -----------------------
+
+// Colors
+// ------
 
 var chartLines = d3
   .scaleOrdinal()
@@ -63,12 +73,80 @@ var continentColor = d3
   ])
   .range(["#27A6DD", "#ED1B24", "#F8931F", "#009345", "#FFCD52", "#8CC63E"]);
 
+var lineColor = d3
+  .scaleOrdinal()
+  .domain(d3.range(20))
+  .range([
+    "#1f77b4",
+    "#ff7f0e",
+    "#2ca02c",
+    "#d62728",
+    "#9467bd",
+    "#8c564b",
+    "#e377c2",
+    "#7f7f7f",
+    "#bcbd22",
+    "#17becf",
+    "#393b79",
+    "#637939",
+    "#8c6d31",
+    "#d6616b",
+    "#7b4173",
+    "#a55194",
+    "#ce6dbd",
+    "#de9ed6",
+    "#3182bd",
+    "#6baed6",
+  ]);
+
+// HELPER FUNCTIONS
+// -----------------------
+
+// Get the HTML item from the countries list by it's name
 const getCountryText = (name) => {
   return d3.selectAll("[data-country]").filter(function () {
     return d3.select(this).attr("data-country") === name;
   });
 };
 
+// Get the rolled up stats of a country
+const getCountryStats = (country_code) => {
+  return countryStats.get(country_code);
+};
+
+// Format large numbers to K or M values
+function formatNumber(number) {
+  if (number >= 1000000) {
+    return (number / 1000000).toFixed(0) + "M";
+  } else if (number >= 1000) {
+    return (number / 1000).toFixed(0) + "K";
+  } else {
+    return number.toString();
+  }
+}
+
+// For calculating rollups
+const calculateRollup = (data, group_by, sum_by = "cases") => {
+  let casesRollup = data.filter((item) => item.iso_code.length <= 3);
+
+  casesRollup = d3.rollup(
+    casesRollup,
+    (v) => d3.sum(v, (d) => d[sum_by]),
+    (d) => d[group_by]
+  );
+
+  let sortedRollup = Array.from(casesRollup, ([key, value]) => ({
+    key,
+    value,
+  })).sort((a, b) => d3.descending(a.value, b.value));
+
+  return { casesRollup, sortedRollup };
+};
+
+// DATA REQUEST FUNCTIONS
+// -----------------------
+
+// Gets map data from github URL
 const getMap = async () => {
   const mapData = await d3.json(
     "https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson"
@@ -76,9 +154,7 @@ const getMap = async () => {
   return mapData;
 };
 
-const dataLink =
-  "https://raw.githubusercontent.com/owid/covid-19-data/master/public/data/owid-covid-data.csv";
-
+// Gets covid data from local csv from a filtered csv file (filtered in exploration.ipynb to reduce load time)
 const getData = async () => {
   const data = await d3.csv("filtered_cases.csv", (d) => {
     return {
@@ -99,8 +175,10 @@ const getData = async () => {
   return data;
 };
 
-const toggleViews = document.querySelectorAll(".toggle-view");
+// -----------------------
 
+// View update functions
+// -----------------------
 const updateView = () => {
   switch (currentView) {
     case "map":
@@ -136,28 +214,26 @@ const reloadView = () => {
   }
 };
 
+// When view tab is selected, update view
 toggleViews.forEach((item) => {
   item.addEventListener("click", () => {
     d3.select("#view").selectAll("svg").remove();
     toggleViews.forEach((view) => view.classList.remove("active"));
     item.classList.add("active");
     currentView = item.dataset.view;
-    switch (item.dataset.view) {
-      case "map":
-        loadMap(mapData);
-        break;
-      case "chart":
-        loadChart();
-        break;
-      case "continentor":
-        loadContinentor();
-        break;
-      case "gdp":
-        loadGDP();
-        break;
-    }
+    reloadView();
   });
 });
+
+// When window is resized, reload the current view
+window.addEventListener("resize", (event) => {
+  reloadView();
+});
+
+// -----------------------
+
+// GDP VIEW
+// -----------------------
 
 const loadGDP = () => {
   d3.select("#view").selectAll("svg").remove();
@@ -313,6 +389,11 @@ const loadGDP = () => {
   });
 };
 
+// -----------------------
+
+// CONTINENTOR TAB
+// -----------------------
+
 const loadContinentor = () => {
   mapHeight = document.querySelector(".view").offsetHeight;
   let r = mapHeight;
@@ -460,41 +541,20 @@ const updateContinentor = () => {
   });
 };
 
+// -----------------------
+
+// CHART TAB
+// -----------------------
+
 const loadChart = () => {
   // set the dimensions and margins of the graph
   d3.select("#view").selectAll("svg").remove();
   d3.select("#legend-container").selectAll("div").remove();
   mapHeight = document.querySelector(".view").offsetHeight;
   mapWidth = document.querySelector(".map").offsetWidth;
-  const margin = { top: 10, right: 100, bottom: 30, left: 55 },
+  const margin = { top: 10, right: 100, bottom: 70, left: 65 },
     width = mapWidth - margin.left - margin.right,
     height = mapHeight - margin.top - margin.bottom;
-
-  lineColor = d3
-    .scaleOrdinal()
-    .domain(d3.range(10))
-    .range([
-      "#1f77b4",
-      "#ff7f0e",
-      "#2ca02c",
-      "#d62728",
-      "#9467bd",
-      "#8c564b",
-      "#e377c2",
-      "#7f7f7f",
-      "#bcbd22",
-      "#17becf",
-      "#393b79",
-      "#637939",
-      "#8c6d31",
-      "#d6616b",
-      "#7b4173",
-      "#a55194",
-      "#ce6dbd",
-      "#de9ed6",
-      "#3182bd",
-      "#6baed6",
-    ]);
 
   // append the svg object to the body of the page
   const lineSvg = d3
@@ -505,6 +565,25 @@ const loadChart = () => {
     .append("g")
     .attr("transform", `translate(${margin.left},${margin.top})`);
   const legend = d3.select("#legend-container");
+
+  // X label
+  d3.select("#view svg")
+    .append("text")
+    .attr("x", width / 2 + 100)
+    .attr("y", height + 80)
+    .attr("text-anchor", "middle")
+    .attr("class", "chart-labels")
+    .style("font-size", 12)
+    .text("Date");
+
+  // Y label
+  d3.select("#view svg")
+    .append("text")
+    .attr("text-anchor", "middle")
+    .attr("transform", "translate(10," + height / 2 + ")rotate(-90)")
+    .style("font-size", 12)
+    .attr("class", "chart-labels")
+    .text("Total Per Million People");
 
   if (selectedCountries == 0) {
     chartLines.domain().forEach((item, i) => {
@@ -798,9 +877,9 @@ function updateChart() {
     idleTimeout = null;
   }
 
+  // Handles when chart is brushed/resized
   function resizeChart(e) {
-    // What are the selected boundaries?
-    extent = e.selection;
+    extent = e.selection; // Boundaries
 
     // If no selection, back to initial coordinate. Otherwise, update X axis domain
     if (!e.selection) {
@@ -811,7 +890,7 @@ function updateChart() {
       filterDateMax = x.invert(e.selection[1]);
       filterDataByDate(filteredData);
       x.domain([filterDateMin, filterDateMax]);
-      line.select(".brush").call(brush.move, null); // This remove the grey brush area as soon as the selection has been done
+      line.select(".brush").call(brush.move, null); // Removes gray selection after brushing is complete
     }
 
     // Update axis and line position
@@ -852,6 +931,8 @@ function updateChart() {
     }
   }
 
+  // This was to transition the line path, but was buggy when paired with brushing so has been removed
+
   // const pathLength = path.node().getTotalLength();
 
   // const transitionPath = d3.transition().ease(d3.easeSin).duration(2000);
@@ -863,11 +944,11 @@ function updateChart() {
   //   .attr("stroke-dashoffset", 0);
 }
 
-const getCountryStats = (country_code) => {
-  return countryStats.get(country_code);
-};
+// -----------------------
 
-// create a tooltip
+// TOOLTIP
+// -----------------------
+
 const Tooltip = d3
   .select("#view")
   .append("div")
@@ -903,19 +984,10 @@ var toolboxMouseOut = function () {
   Tooltip.style("opacity", 0);
 };
 
-function formatNumber(number) {
-  if (number >= 1000000) {
-    return (number / 1000000).toFixed(0) + "M";
-  } else if (number >= 1000) {
-    return (number / 1000).toFixed(0) + "K";
-  } else {
-    return number.toString();
-  }
-}
+// -----------------------
 
-window.addEventListener("resize", (event) => {
-  reloadView();
-});
+// MAP VIEW
+// -----------------------
 
 const loadMap = (mapData) => {
   d3.select("#legend-container").selectAll("div").remove();
@@ -997,6 +1069,9 @@ const updateMap = () => {
     });
 };
 
+// -----------------------
+
+// Update list of countries on the right
 const loadCountryText = (data) => {
   var g = d3
     .select("#countries_list")
@@ -1078,37 +1153,21 @@ const loadCountryText = (data) => {
     );
 };
 
-const calculateRollup = (data, group_by, sum_by = "cases") => {
-  let casesRollup = data.filter((item) => item.iso_code.length <= 3);
-
-  casesRollup = d3.rollup(
-    casesRollup,
-    (v) => d3.sum(v, (d) => d[sum_by]),
-    (d) => d[group_by]
-  );
-
-  let sortedRollup = Array.from(casesRollup, ([key, value]) => ({
-    key,
-    value,
-  })).sort((a, b) => d3.descending(a.value, b.value));
-
-  return { casesRollup, sortedRollup };
-};
-
+// General function for handling updating data when it changes
 const updateData = () => {
-  // project.fitSize([900, 500], geojson);
-  // Load external data and boot
-
+  // Mapping code to country
   countryToCode = filteredData.reduce((result, item) => {
     result[item.iso_code] = item.location;
     return result;
   }, {});
 
+  // Mapping country to code
   codeToCountry = filteredData.reduce((result, item) => {
     result[item.location] = item.iso_code;
     return result;
   }, {});
 
+  // Mapping code to country
   codeToContinent = filteredData.reduce((result, item) => {
     result[item.iso_code] = item.continent;
     return result;
@@ -1117,6 +1176,7 @@ const updateData = () => {
   sortedRollup = calculateRollup(filteredData, "iso_code").sortedRollup;
   casesRollup = calculateRollup(filteredData, "iso_code").casesRollup;
 
+  // Update total value in top left
   d3.select("#total").text(
     sortedRollup
       .map((item) => item.value)
@@ -1124,6 +1184,7 @@ const updateData = () => {
       .toLocaleString()
   );
 
+  // Define country stats for tooltip
   countryStats = d3.rollup(
     filteredData,
     (v) => ({
@@ -1139,6 +1200,10 @@ const updateData = () => {
   loadCountryText(sortedRollup);
 };
 
+// CONTINENT UPDATE
+// -----------------------
+
+// Update data when continent is updated
 const updateContinent = (continent) => {
   if (continent == "World") {
     new_data = data;
@@ -1199,6 +1264,9 @@ continentSelect.addEventListener("change", () => {
   updateContinent(continentSelect.value);
 });
 
+// -----------------------
+
+// Update data when start/end date is altered
 const filterDataByDate = (data) => {
   filteredData = data.filter(
     (item) => item.date >= filterDateMin && item.date <= filterDateMax
@@ -1208,7 +1276,10 @@ const filterDataByDate = (data) => {
   updateSlider();
 };
 
-const simulationButton = document.getElementById("simulation-button");
+// -----------------------
+
+// SIMULATION
+// -----------------------
 
 const startSimulation = () => {
   isSimulating = true;
@@ -1240,6 +1311,9 @@ simulationButton.addEventListener("click", () => {
   }
 });
 
+// -----------------------
+
+// Update slider values
 const updateSlider = () => {
   $("#slider-range").slider("values", 0, filterDateMin.getTime() / 1000);
   $("#slider-range").slider("values", 1, filterDateMax.getTime() / 1000);
@@ -1265,6 +1339,10 @@ const updateSlider = () => {
   );
 };
 
+// MAIN FUNCTION
+// -----------------------
+
+// This is what gets the data, and initialises everything when the site first loads
 getData().then((res) => {
   data = res;
   filteredData = res;
@@ -1351,6 +1429,7 @@ getData().then((res) => {
     });
   });
 
+  // While simulate is true, update the end date by 30 every 800ms
   setInterval(() => {
     if (isSimulating) {
       filterDateMax.setDate(filterDateMax.getDate() + 30);
