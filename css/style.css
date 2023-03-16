@@ -1,5 +1,5 @@
 :root {
-  --primary: #d04b4b;
+  --primary: #cf4444;
   --purple: #ffffff;
   --stroke: #d9d9d9;
   --black: #232323;
@@ -62,7 +62,7 @@ select {
   cursor: pointer;
 }
 .country:hover {
-  fill: #d04b4b;
+  fill: #cf4444;
 }
 
 .countries-list {
