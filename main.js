@@ -13,6 +13,12 @@ let filterDateMax = null;
 let isSimulating = false;
 let dateExtents = null;
 const continentSelect = document.getElementById("continent-selector");
+let chartDisplay = ["Cases"];
+
+var chartLines = d3
+  .scaleOrdinal()
+  .domain(["Cases", "Vaccinations", "Boosters", "Deaths"])
+  .range(["#27A6DD", "#ED1B24", "#F8931F", "#009345"]);
 
 //   https://www.vis4.net/blog/2013/09/mastering-multi-hued-color-scales/
 var color = d3
@@ -86,6 +92,8 @@ const getData = async () => {
       gdp: d.gdp_per_capita,
       cases_per_million: d.new_cases_per_million,
       vaccinations_per_million: d.new_vaccinations_smoothed_per_million,
+      deaths_per_million: d.new_deaths_per_million,
+      boosters_per_million: d.new_boosters_per_million,
     };
   });
   return data;
@@ -394,6 +402,7 @@ const updateContinentor = () => {
 const loadChart = () => {
   // set the dimensions and margins of the graph
   d3.select("#view").selectAll("svg").remove();
+  d3.select("#legend-container").selectAll("div").remove();
   mapHeight = document.querySelector(".view").offsetHeight;
   mapWidth = document.querySelector(".map").offsetWidth;
   const margin = { top: 10, right: 100, bottom: 30, left: 55 },
@@ -408,7 +417,31 @@ const loadChart = () => {
     .attr("height", height + margin.top + margin.bottom)
     .append("g")
     .attr("transform", `translate(${margin.left},${margin.top})`);
+  const legend = d3.select("#legend-container");
 
+  chartLines.domain().forEach((item, i) => {
+    let legendItem = legend
+      .append("div")
+      .attr("class", "legend__item")
+      .style("opacity", () => (chartDisplay.includes(item) ? 1 : 0.4))
+      .style("cursor", "pointer")
+      .on("click", () => {
+        if (chartDisplay.includes(item)) {
+          chartDisplay = chartDisplay.filter((chartItem) => chartItem != item);
+        } else {
+          chartDisplay.push(item);
+        }
+        loadChart();
+      });
+    legendItem
+      .append("span")
+      .attr("width", 8)
+      .attr("height", 8)
+      .attr("class", "legend__color")
+      .style("background-color", chartLines(item));
+
+    legendItem.append("span").text(item).attr("class", "legend__text");
+  });
   updateChart();
 };
 
@@ -443,10 +476,23 @@ function updateChart() {
     "date",
     "cases_per_million"
   ).casesRollup;
+
   let rollupVaccinations = calculateRollup(
     new_data,
     "date",
     "vaccinations_per_million"
+  ).casesRollup;
+
+  let rollupDeaths = calculateRollup(
+    new_data,
+    "date",
+    "deaths_per_million"
+  ).casesRollup;
+
+  let rollupBoosters = calculateRollup(
+    new_data,
+    "date",
+    "boosters_per_million"
   ).casesRollup;
 
   const x = d3
@@ -488,19 +534,36 @@ function updateChart() {
   let y = null;
   let path = null;
 
-  let vacMax = d3.max(rollupVaccinations, function (d) {
-    return d[1];
-  });
+  let vacMax = 0;
+  let caseMax = 0;
+  let boosterMax = 0;
+  let deathMax = 0;
 
-  let caseMax = d3.max(rollup, function (d) {
-    return d[1];
-  });
+  if (chartDisplay.includes("Vaccinations")) {
+    vacMax = d3.max(rollupVaccinations, function (d) {
+      return d[1];
+    });
+  }
 
-  console.log(vacMax);
-  console.log(caseMax);
+  if (chartDisplay.includes("Cases")) {
+    caseMax = d3.max(rollup, function (d) {
+      return d[1];
+    });
+  }
 
-  let max = Math.max(vacMax, caseMax);
-  console.log(max);
+  if (chartDisplay.includes("Deaths")) {
+    deathMax = d3.max(rollupDeaths, function (d) {
+      return d[1];
+    });
+  }
+
+  if (chartDisplay.includes("Boosters")) {
+    boosterMax = d3.max(rollupBoosters, function (d) {
+      return d[1];
+    });
+  }
+
+  let max = Math.max(vacMax, caseMax, deathMax, boosterMax);
 
   if (selectedCountries.length == 0) {
     y = d3.scaleLinear().domain([0, max]).range([height, 0]);
@@ -509,42 +572,86 @@ function updateChart() {
     // Add the line
     path = line.append("path");
 
-    path
-      .datum(rollup)
-      .attr("class", "line") // I add the class line to be able to modify this line later on.
-      .attr("fill", "none")
-      .attr("stroke", "#d04b4b")
-      .attr("stroke-width", 2)
-      .attr(
-        "d",
-        d3
-          .line()
-          .x(function (d) {
-            return x(d[0]);
-          })
-          .y(function (d) {
-            return y(d[1]);
-          })
-      );
-
-    path = line.append("path");
-    path
-      .datum(rollupVaccinations)
-      .attr("class", "line") // I add the class line to be able to modify this line later on.
-      .attr("fill", "none")
-      .attr("stroke", "blue")
-      .attr("stroke-width", 2)
-      .attr(
-        "d",
-        d3
-          .line()
-          .x(function (d) {
-            return x(d[0]);
-          })
-          .y(function (d) {
-            return y(d[1]);
-          })
-      );
+    if (chartDisplay.includes("Cases")) {
+      path
+        .datum(rollup)
+        .attr("class", "line") // I add the class line to be able to modify this line later on.
+        .attr("fill", "none")
+        .attr("stroke", chartLines("Cases"))
+        .attr("stroke-width", 2)
+        .attr(
+          "d",
+          d3
+            .line()
+            .x(function (d) {
+              return x(d[0]);
+            })
+            .y(function (d) {
+              return y(d[1]);
+            })
+        );
+    }
+    if (chartDisplay.includes("Vaccinations")) {
+      path = line.append("path");
+      path
+        .datum(rollupVaccinations)
+        .attr("class", "line") // I add the class line to be able to modify this line later on.
+        .attr("fill", "none")
+        .attr("stroke", chartLines("Vaccinations"))
+        .attr("stroke-width", 2)
+        .attr(
+          "d",
+          d3
+            .line()
+            .x(function (d) {
+              return x(d[0]);
+            })
+            .y(function (d) {
+              return y(d[1]);
+            })
+        );
+    }
+    if (chartDisplay.includes("Deaths")) {
+      console.log(rollupDeaths);
+      path = line.append("path");
+      path
+        .datum(rollupDeaths)
+        .attr("class", "line") // I add the class line to be able to modify this line later on.
+        .attr("fill", "none")
+        .attr("stroke", chartLines("Deaths"))
+        .attr("stroke-width", 2)
+        .attr(
+          "d",
+          d3
+            .line()
+            .x(function (d) {
+              return x(d[0]);
+            })
+            .y(function (d) {
+              return y(d[1]);
+            })
+        );
+    }
+    if (chartDisplay.includes("Boosters")) {
+      path = line.append("path");
+      path
+        .datum(rollupBoosters)
+        .attr("class", "line") // I add the class line to be able to modify this line later on.
+        .attr("fill", "none")
+        .attr("stroke", chartLines("Boosters"))
+        .attr("stroke-width", 2)
+        .attr(
+          "d",
+          d3
+            .line()
+            .x(function (d) {
+              return x(d[0]);
+            })
+            .y(function (d) {
+              return y(d[1]);
+            })
+        );
+    }
   } else {
     let lineColor = d3
       .scaleSequential()
