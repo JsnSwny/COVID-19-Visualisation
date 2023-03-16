@@ -11,6 +11,8 @@ let currentView = "map";
 let filterDateMin = null;
 let filterDateMax = null;
 let isSimulating = false;
+let dateExtents = null;
+const continentSelect = document.getElementById("continent-selector");
 
 //   https://www.vis4.net/blog/2013/09/mastering-multi-hued-color-scales/
 var color = d3
@@ -83,6 +85,7 @@ const getData = async () => {
       vaccinations: d.new_vaccinations,
       gdp: d.gdp_per_capita,
       cases_per_million: d.new_cases_per_million,
+      vaccinations_per_million: d.new_vaccinations_smoothed_per_million,
     };
   });
   return data;
@@ -148,8 +151,6 @@ const loadGDP = () => {
     .attr("height", height + margin.top + margin.bottom)
     .append("g")
     .attr("transform", `translate(${margin.left}, ${margin.top})`);
-
-  console.log("updating");
 
   let data = filteredData.filter((item) => item.iso_code.length <= 3);
   let rollupData = d3.rollup(
@@ -268,8 +269,6 @@ const loadContinentor = () => {
     .attr("class", "continentor");
   lineSvg = lineSvg.append("g");
 
-  console.log("load continentor");
-
   updateContinentor();
 };
 
@@ -277,6 +276,7 @@ const updateContinentor = () => {
   d3.select("#legend-container").selectAll("div").remove();
   mapHeight = document.querySelector(".view").offsetHeight - 10;
   let r = mapHeight;
+
   let rollup = filteredData.filter((item) => item.iso_code.length <= 3);
 
   rollup = d3.rollup(
@@ -285,8 +285,6 @@ const updateContinentor = () => {
     (d) => d.continent,
     (d) => d.location
   );
-
-  console.log(rollup);
 
   var packLayout = d3.pack().size([r, r]);
 
@@ -298,8 +296,6 @@ const updateContinentor = () => {
   packLayout(rootNode);
 
   let lineSvg = d3.select(".continentor").select("g");
-
-  console.log(rootNode.descendants());
 
   var nodes = lineSvg
     .selectAll("g")
@@ -338,7 +334,6 @@ const updateContinentor = () => {
               .attr("class", "country-text country-text--hover")
               .text(() => {
                 if (d.children === undefined) {
-                  console.log(d);
                   return d.data[0];
                 }
               })
@@ -358,7 +353,7 @@ const updateContinentor = () => {
         nodes = update
           .transition()
           .ease(d3.easeSin)
-          .duration(30)
+          .duration(500)
           .attr("transform", function (d) {
             return "translate(" + [d.x, d.y] + ")";
           })
@@ -440,7 +435,19 @@ function updateChart() {
     filteredCountries.includes(item.iso_code)
   );
 
-  let rollup = calculateRollup(new_data, "date").casesRollup;
+  console.log(filteredData);
+  console.log(filteredCountries);
+
+  let rollup = calculateRollup(
+    new_data,
+    "date",
+    "cases_per_million"
+  ).casesRollup;
+  let rollupVaccinations = calculateRollup(
+    new_data,
+    "date",
+    "vaccinations_per_million"
+  ).casesRollup;
 
   const x = d3
     .scaleTime()
@@ -481,16 +488,22 @@ function updateChart() {
   let y = null;
   let path = null;
 
+  let vacMax = d3.max(rollupVaccinations, function (d) {
+    return d[1];
+  });
+
+  let caseMax = d3.max(rollup, function (d) {
+    return d[1];
+  });
+
+  console.log(vacMax);
+  console.log(caseMax);
+
+  let max = Math.max(vacMax, caseMax);
+  console.log(max);
+
   if (selectedCountries.length == 0) {
-    y = d3
-      .scaleLinear()
-      .domain([
-        0,
-        d3.max(rollup, function (d) {
-          return d[1];
-        }),
-      ])
-      .range([height, 0]);
+    y = d3.scaleLinear().domain([0, max]).range([height, 0]);
     lineSvg.append("g").call(d3.axisLeft(y));
 
     // Add the line
@@ -501,6 +514,25 @@ function updateChart() {
       .attr("class", "line") // I add the class line to be able to modify this line later on.
       .attr("fill", "none")
       .attr("stroke", "#d04b4b")
+      .attr("stroke-width", 2)
+      .attr(
+        "d",
+        d3
+          .line()
+          .x(function (d) {
+            return x(d[0]);
+          })
+          .y(function (d) {
+            return y(d[1]);
+          })
+      );
+
+    path = line.append("path");
+    path
+      .datum(rollupVaccinations)
+      .attr("class", "line") // I add the class line to be able to modify this line later on.
+      .attr("fill", "none")
+      .attr("stroke", "blue")
       .attr("stroke-width", 2)
       .attr(
         "d",
@@ -594,7 +626,7 @@ function updateChart() {
 
     if (selectedCountries.length == 0) {
       line
-        .select(".line")
+        .selectAll(".line")
         .transition()
         .duration(1000)
         .attr(
@@ -645,7 +677,6 @@ const loadMap = (mapData) => {
   mapSvg.attr("width", width);
   mapSvg.attr("height", height);
   const projection = d3.geoNaturalEarth1().translate([width / 2, height / 2]);
-  console.log([width, height]);
   projection.fitSize([width, height], mapData);
 
   let map = mapSvg
@@ -685,7 +716,8 @@ const loadMap = (mapData) => {
 const updateMap = () => {
   d3.selectAll(".country")
     .transition()
-    .duration(50)
+    .ease(d3.easeSin)
+    .duration(500)
     .attr("fill", (d) => {
       return color(casesRollup.get(d.id));
     });
@@ -817,9 +849,10 @@ const updateData = () => {
 
 const updateContinent = (continent) => {
   if (continent == "World") {
+    new_data = data;
     filteredCountries = Array.from(
       new Set(
-        filteredData
+        data
           .filter((item) => item.iso_code.length <= 3)
           .map((item) => item.iso_code)
       )
@@ -828,13 +861,22 @@ const updateContinent = (continent) => {
     new_data = data.filter((item) => item.continent == continent);
     filteredCountries = Array.from(
       new Set(
-        filteredData
+        data
           .filter((item) => item.continent == continent)
           .map((item) => item.iso_code)
       )
     );
   }
-  filterDataByDate(new_data);
+
+  filteredData = new_data.filter(
+    (item) => item.date >= filterDateMin && item.date <= filterDateMax
+  );
+
+  console.log(filteredCountries);
+
+  filterDataByDate(filteredData);
+  updateView();
+  console.log(filteredCountries);
   updateData();
 
   mapSvg
@@ -864,8 +906,6 @@ const updateContinent = (continent) => {
     );
 };
 
-const continentSelect = document.getElementById("continent-selector");
-
 continentSelect.addEventListener("change", () => {
   updateContinent(continentSelect.value);
 });
@@ -874,24 +914,42 @@ const filterDataByDate = (data) => {
   filteredData = data.filter(
     (item) => item.date >= filterDateMin && item.date <= filterDateMax
   );
+  // updateContinent(continentSelect.value);
   updateData();
   updateSlider();
 };
 
 const simulationButton = document.getElementById("simulation-button");
 
-simulationButton.addEventListener("click", () => {
-  isSimulating = !isSimulating;
+const startSimulation = () => {
+  isSimulating = true;
+  console.log("Starting sim");
+  if (
+    dateExtents[1] * 1000 ==
+    new Date($("#slider-range").slider("values", 1)) * 1000000
+  ) {
+    console.log(filterDateMin);
+    new_date = filterDateMin.setDate(filterDateMin.getDate() + 1);
+    filterDateMax = new Date(new_date);
+    updateSlider();
+  }
+  simulationButton.classList.toggle("playing");
+  simulationButton.querySelector("span").innerHTML = "Pause Simulation";
+  simulationButton.querySelector("i").classList = "fa-solid fa-pause";
+};
 
-  if (isSimulating) {
-    console.log(simulationButton.querySelector("span"));
-    simulationButton.classList.toggle("playing");
-    simulationButton.querySelector("span").innerHTML = "Pause Simulation";
-    simulationButton.querySelector("i").classList = "fa-solid fa-pause";
+const stopSimulation = () => {
+  isSimulating = false;
+  simulationButton.querySelector("span").innerHTML = "Play Simulation";
+  simulationButton.classList.toggle("playing");
+  simulationButton.querySelector("i").classList = "fa-solid fa-play";
+};
+
+simulationButton.addEventListener("click", () => {
+  if (!isSimulating) {
+    startSimulation();
   } else {
-    simulationButton.querySelector("span").innerHTML = "Play Simulation";
-    simulationButton.classList.toggle("playing");
-    simulationButton.querySelector("i").classList = "fa-solid fa-play";
+    stopSimulation();
   }
 });
 
@@ -933,6 +991,10 @@ getData().then((res) => {
         .map((item) => item.iso_code)
     )
   );
+
+  dateExtents = d3.extent(data, function (d) {
+    return d.date;
+  });
 
   getMap().then((map) => {
     mapData = map;
@@ -1009,6 +1071,12 @@ getData().then((res) => {
       updateView();
       updateData();
       updateSlider();
+      if (
+        dateExtents[1] * 1000 ==
+        new Date($("#slider-range").slider("values", 1)) * 1000000
+      ) {
+        stopSimulation();
+      }
     }
-  }, 20);
+  }, 800);
 });
