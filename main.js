@@ -118,6 +118,24 @@ const updateView = () => {
   }
 };
 
+const reloadView = () => {
+  d3.select("#view").selectAll("svg").remove();
+  switch (currentView) {
+    case "map":
+      loadMap(mapData);
+      break;
+    case "gdp":
+      loadGDP();
+      break;
+    case "chart":
+      loadChart();
+      break;
+    case "continentor":
+      loadContinentor();
+      break;
+  }
+};
+
 toggleViews.forEach((item) => {
   item.addEventListener("click", () => {
     d3.select("#view").selectAll("svg").remove();
@@ -232,7 +250,19 @@ const loadGDP = () => {
             return y(d[1].average_cases_per_million);
           })
           .attr("r", 3)
-          .style("fill", (d) => continentColor(d[1].continent));
+          .style("fill", (d) => continentColor(d[1].continent))
+          .on("mousemove", (e, d) => {
+            console.log(d);
+            code = codeToCountry[d[0]];
+            toolboxMouseMove(e, code);
+          })
+
+          .on("mouseover", (e, d) => {
+            toolboxMouseOver();
+          })
+          .on("mouseout", (e, d) => {
+            toolboxMouseOut();
+          });
         return g;
       },
       function (update) {
@@ -255,13 +285,30 @@ const loadGDP = () => {
   const legend = d3.select("#legend-container");
 
   continentColor.domain().forEach((continent, i) => {
-    let legendItem = legend.append("div").attr("class", "legend__item");
+    let legendItem = legend
+      .append("div")
+      .attr("class", "legend__item")
+      .on("click", () => {
+        continentSelect.value = continent;
+        updateContinent(continent);
+      })
+      .style("cursor", "pointer");
     legendItem
       .append("span")
       .attr("width", 8)
       .attr("height", 8)
       .attr("class", "legend__color")
-      .style("background-color", continentColor(continent));
+      .style("background-color", continentColor(continent))
+      .style("opacity", () => {
+        if (continentSelect.value == "World") {
+          return 1;
+        } else {
+          if (continent != continentSelect.value) {
+            return 0.4;
+          }
+        }
+      });
+
     legendItem.append("span").text(continent).attr("class", "legend__text");
   });
 };
@@ -325,6 +372,7 @@ const updateContinentor = () => {
                 return "#f1f1f1";
             }
           })
+          .style("cursor", "pointer")
           .style("stroke", (d) => {
             if (d.depth == 0) {
               return "#d9d9d9";
@@ -336,20 +384,33 @@ const updateContinentor = () => {
             }
           })
 
+          .on("mousemove", (e, d) => {
+            if (!d.data[0] && d.depth == 0) {
+              code = "OWID_WRL";
+            } else {
+              code = codeToCountry[d.data[0]];
+            }
+
+            toolboxMouseMove(e, code);
+          })
+
           .on("mouseover", (e, d) => {
-            lineSvg
-              .append("text")
-              .attr("class", "country-text country-text--hover")
-              .text(() => {
-                if (d.children === undefined) {
-                  return d.data[0];
-                }
-              })
-              .attr("dx", d.x)
-              .attr("dy", d.y);
+            toolboxMouseOver();
           })
           .on("mouseout", (e, d) => {
-            lineSvg.selectAll(".country-text--hover").remove();
+            code = codeToCountry[d.data[0]];
+            toolboxMouseOut();
+          })
+          .on("click", (e, d) => {
+            code = codeToCountry[d.data[0]];
+            let checkbox = getCountryText(code).node().children[0];
+            checkbox.checked = !checkbox.checked;
+
+            if (checkbox.checked) {
+              addSelectedCountry(code);
+            } else {
+              removeSelectedCountry(code);
+            }
           })
           .transition()
           .duration(2000)
@@ -409,6 +470,32 @@ const loadChart = () => {
     width = mapWidth - margin.left - margin.right,
     height = mapHeight - margin.top - margin.bottom;
 
+  lineColor = d3
+    .scaleOrdinal()
+    .domain(d3.range(10))
+    .range([
+      "#1f77b4",
+      "#ff7f0e",
+      "#2ca02c",
+      "#d62728",
+      "#9467bd",
+      "#8c564b",
+      "#e377c2",
+      "#7f7f7f",
+      "#bcbd22",
+      "#17becf",
+      "#393b79",
+      "#637939",
+      "#8c6d31",
+      "#d6616b",
+      "#7b4173",
+      "#a55194",
+      "#ce6dbd",
+      "#de9ed6",
+      "#3182bd",
+      "#6baed6",
+    ]);
+
   // append the svg object to the body of the page
   const lineSvg = d3
     .select("#view")
@@ -419,29 +506,47 @@ const loadChart = () => {
     .attr("transform", `translate(${margin.left},${margin.top})`);
   const legend = d3.select("#legend-container");
 
-  chartLines.domain().forEach((item, i) => {
-    let legendItem = legend
-      .append("div")
-      .attr("class", "legend__item")
-      .style("opacity", () => (chartDisplay.includes(item) ? 1 : 0.4))
-      .style("cursor", "pointer")
-      .on("click", () => {
-        if (chartDisplay.includes(item)) {
-          chartDisplay = chartDisplay.filter((chartItem) => chartItem != item);
-        } else {
-          chartDisplay.push(item);
-        }
-        loadChart();
-      });
-    legendItem
-      .append("span")
-      .attr("width", 8)
-      .attr("height", 8)
-      .attr("class", "legend__color")
-      .style("background-color", chartLines(item));
+  if (selectedCountries == 0) {
+    chartLines.domain().forEach((item, i) => {
+      let legendItem = legend
+        .append("div")
+        .attr("class", "legend__item")
+        .style("opacity", () => (chartDisplay.includes(item) ? 1 : 0.4))
+        .style("cursor", "pointer")
+        .on("click", () => {
+          if (chartDisplay.includes(item)) {
+            chartDisplay = chartDisplay.filter(
+              (chartItem) => chartItem != item
+            );
+          } else {
+            chartDisplay.push(item);
+          }
+          loadChart();
+        });
+      legendItem
+        .append("span")
+        .attr("width", 8)
+        .attr("height", 8)
+        .attr("class", "legend__color")
+        .style("background-color", chartLines(item));
 
-    legendItem.append("span").text(item).attr("class", "legend__text");
-  });
+      legendItem.append("span").text(item).attr("class", "legend__text");
+    });
+  } else {
+    selectedCountries.forEach((item, idx) => {
+      let legendItem = legend.append("div").attr("class", "legend__item");
+
+      legendItem
+        .append("span")
+        .attr("width", 8)
+        .attr("height", 8)
+        .attr("class", "legend__color")
+        .style("background-color", lineColor(idx));
+
+      legendItem.append("span").text(item).attr("class", "legend__text");
+    });
+  }
+
   updateChart();
 };
 
@@ -464,13 +569,10 @@ function updateChart() {
   const lineSvg = d3.select("#view").select("g");
   lineSvg.selectAll("g").remove();
   lineSvg.selectAll("path").remove();
+
   let new_data = filteredData.filter((item) =>
     filteredCountries.includes(item.iso_code)
   );
-
-  console.log(filteredData);
-  console.log(filteredCountries);
-
   let rollup = calculateRollup(
     new_data,
     "date",
@@ -612,7 +714,6 @@ function updateChart() {
         );
     }
     if (chartDisplay.includes("Deaths")) {
-      console.log(rollupDeaths);
       path = line.append("path");
       path
         .datum(rollupDeaths)
@@ -653,21 +754,6 @@ function updateChart() {
         );
     }
   } else {
-    let lineColor = d3
-      .scaleSequential()
-      .domain([0, selectedCountries.length])
-      .range([
-        "#1f77b4",
-        "#ff7f0e",
-        "#2ca02c",
-        "#d62728",
-        "#9467bd",
-        "#8c564b",
-        "#e377c2",
-        "#7f7f7f",
-        "#bcbd22",
-        "#17becf",
-      ]);
     all_country_data = new_data.filter((item) =>
       selectedCountries.includes(item.iso_code)
     );
@@ -777,7 +863,62 @@ function updateChart() {
   //   .attr("stroke-dashoffset", 0);
 }
 
+const getCountryStats = (country_code) => {
+  return countryStats.get(country_code);
+};
+
+// create a tooltip
+const Tooltip = d3
+  .select("#view")
+  .append("div")
+  .attr("class", "tooltip")
+  .style("opacity", 0)
+  .style("background-color", "white")
+  .style("border", "solid")
+  .style("border-width", "2px")
+  .style("border-radius", "5px")
+  .style("padding", "5px")
+  .style("position", "absolute")
+  .style("pointer-events", "none");
+
+const toolboxMouseOver = function () {
+  Tooltip.style("opacity", 1);
+};
+
+var toolboxMouseMove = function (event, code) {
+  stats = getCountryStats(code);
+  Tooltip.html(
+    `<h4 class="toolbox__title">${stats.location}</h4>
+    Cases: ${stats.cases}
+    <br>
+    Vaccinations: ${stats.vaccinations}
+    <br>
+    Deaths: ${stats.deaths}
+    `
+  )
+    .style("left", d3.pointer(event, this)[0] + "px")
+    .style("top", d3.pointer(event, this)[1] - 100 + "px");
+};
+var toolboxMouseOut = function () {
+  Tooltip.style("opacity", 0);
+};
+
+function formatNumber(number) {
+  if (number >= 1000000) {
+    return (number / 1000000).toFixed(0) + "M";
+  } else if (number >= 1000) {
+    return (number / 1000).toFixed(0) + "K";
+  } else {
+    return number.toString();
+  }
+}
+
+window.addEventListener("resize", (event) => {
+  reloadView();
+});
+
 const loadMap = (mapData) => {
+  d3.select("#legend-container").selectAll("div").remove();
   mapSvg = d3.select("#view").append("svg").attr("id", "map");
   let width = document.querySelector(".map").offsetWidth;
   let height = document.querySelector(".view").offsetHeight;
@@ -803,10 +944,13 @@ const loadMap = (mapData) => {
     })
     .on("mouseover", function (e, d) {
       getCountryText(d.id).classed("country-item--hover", true);
+      toolboxMouseOver();
     })
     .on("mouseout", function (e, d) {
       getCountryText(d.id).classed("country-item--hover", false);
+      toolboxMouseOut();
     })
+    .on("mousemove", (e, d) => toolboxMouseMove(e, d.id))
     .on("click", function (e, d) {
       let checkbox = getCountryText(d.id).node().children[0];
       checkbox.checked = !checkbox.checked;
@@ -817,6 +961,29 @@ const loadMap = (mapData) => {
         removeSelectedCountry(d.id);
       }
     });
+
+  const legend = d3.select("#legend-container");
+
+  color.domain().forEach((range, i) => {
+    let legendItem = legend.append("div").attr("class", "legend__item");
+    legendItem
+      .append("span")
+      .attr("width", 8)
+      .attr("height", 8)
+      .attr("class", "legend__color")
+      .style("background-color", color(range));
+    legendItem
+      .append("span")
+      .text(
+        `${formatNumber(range)}${
+          i == color.domain().length - 1
+            ? "+"
+            : ` - ${formatNumber(color.domain()[i + 1])}`
+        } `
+      )
+      .attr("class", "legend__text");
+  });
+
   // mapSvg.attr("height", document.getElementById("map").getBBox().height + 10);
 };
 
@@ -937,6 +1104,11 @@ const updateData = () => {
     return result;
   }, {});
 
+  codeToCountry = filteredData.reduce((result, item) => {
+    result[item.location] = item.iso_code;
+    return result;
+  }, {});
+
   codeToContinent = filteredData.reduce((result, item) => {
     result[item.iso_code] = item.continent;
     return result;
@@ -951,6 +1123,19 @@ const updateData = () => {
       .reduce((a, b) => a + b, 0)
       .toLocaleString()
   );
+
+  countryStats = d3.rollup(
+    filteredData,
+    (v) => ({
+      cases: d3.sum(v, (d) => d["cases"]).toLocaleString(),
+      vaccinations: d3.sum(v, (d) => d["vaccinations"]).toLocaleString(),
+      deaths: d3.sum(v, (d) => d["deaths"]).toLocaleString(),
+      continent: v[0].continent,
+      location: v[0].location,
+    }),
+    (d) => d.iso_code
+  );
+
   loadCountryText(sortedRollup);
 };
 
@@ -979,11 +1164,8 @@ const updateContinent = (continent) => {
     (item) => item.date >= filterDateMin && item.date <= filterDateMax
   );
 
-  console.log(filteredCountries);
-
   filterDataByDate(filteredData);
   updateView();
-  console.log(filteredCountries);
   updateData();
 
   mapSvg
@@ -1030,12 +1212,10 @@ const simulationButton = document.getElementById("simulation-button");
 
 const startSimulation = () => {
   isSimulating = true;
-  console.log("Starting sim");
   if (
     dateExtents[1] * 1000 ==
     new Date($("#slider-range").slider("values", 1)) * 1000000
   ) {
-    console.log(filterDateMin);
     new_date = filterDateMin.setDate(filterDateMin.getDate() + 1);
     filterDateMax = new Date(new_date);
     updateSlider();

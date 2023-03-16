@@ -7,38 +7,113 @@
     <title>Document</title>
   </head>
   <body>
-    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <!-- Load d3.js -->
+    <script src="https://d3js.org/d3.v6.js"></script>
+
+    <!-- Create a div where the graph will take place -->
+    <div id="my_dataviz"></div>
+
+    <style>
+      .circle:hover {
+        stroke: black;
+        stroke-width: 4px;
+      }
+    </style>
+
     <script>
-      // Define your data
-      const data = [0, 100, 500, 1000, 2000, 5000, 10000, 1000000];
+      // set width and height of svg
+      const width = 460;
+      const height = 400;
 
-      // Calculate the number of bins using d3.thresholdScott()
-      const numBins = d3.bin().thresholdScott(data);
-      console.log(numBins);
-      // Generate the threshold values using d3.histogram() and d3.scaleThreshold()
-      const histogram = d3
-        .histogram()
-        .thresholds(numBins)
-        .domain([0, d3.max(data)]);
-      const bins = histogram(data);
-      const thresholds = bins.map((bin) => bin.x1);
+      // The svg
+      const svg = d3
+        .select("#my_dataviz")
+        .append("svg")
+        .attr("width", width)
+        .attr("height", height);
 
-      // Define your color scale
-      const colorScale = d3
-        .scaleThreshold()
-        .domain(thresholds)
-        .range([
-          "#f7fbff",
-          "#deebf7",
-          "#c6dbef",
-          "#9ecae1",
-          "#6baed6",
-          "#3182bd",
-          "#08519c",
-        ]);
+      // Map and projection
+      const projection = d3
+        .geoMercator()
+        .center([4, 47]) // GPS of location to zoom on
+        .scale(1020) // This is like the zoom
+        .translate([width / 2, height / 2]);
 
-      // Map your data values to colors using the color scale
-      const colorMappedData = data.map((d) => colorScale(d));
+      // Create data for circles:
+      const markers = [
+        { long: 9.083, lat: 42.149, name: "Corsica" }, // corsica
+        { long: 7.26, lat: 43.71, name: "Nice" }, // nice
+        { long: 2.349, lat: 48.864, name: "Paris" }, // Paris
+        { long: -1.397, lat: 43.664, name: "Hossegor" }, // Hossegor
+        { long: 3.075, lat: 50.64, name: "Lille" }, // Lille
+        { long: -3.83, lat: 58, name: "Morlaix" }, // Morlaix
+      ];
+
+      // Load external data and boot
+      d3.json(
+        "https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson"
+      ).then(function (data) {
+        // Filter data
+        data.features = data.features.filter(
+          (d) => d.properties.name == "France"
+        );
+
+        // Draw the map
+        svg
+          .append("g")
+          .selectAll("path")
+          .data(data.features)
+          .join("path")
+          .attr("fill", "#b8b8b8")
+          .attr("d", d3.geoPath().projection(projection))
+          .style("stroke", "black")
+          .style("opacity", 0.3);
+
+        // create a tooltip
+        const Tooltip = d3
+          .select("#my_dataviz")
+          .append("div")
+          .attr("class", "tooltip")
+          .style("opacity", 1)
+          .style("background-color", "white")
+          .style("border", "solid")
+          .style("border-width", "2px")
+          .style("border-radius", "5px")
+          .style("padding", "5px")
+          .style("position", "absolute");
+
+        // Three function that change the tooltip when user hover / move / leave a cell
+        const mouseover = function (event, d) {
+          Tooltip.style("opacity", 1);
+        };
+        var mousemove = function (event, d) {
+          Tooltip.html(
+            d.name + "<br>" + "long: " + d.long + "<br>" + "lat: " + d.lat
+          )
+            .style("left", event.x / 2 + "px")
+            .style("top", event.y / 2 - 30 + "px");
+        };
+        var mouseleave = function (event, d) {
+          Tooltip.style("opacity", 0);
+        };
+
+        // Add circles:
+        svg
+          .selectAll("myCircles")
+          .data(markers)
+          .join("circle")
+          .attr("cx", (d) => projection([d.long, d.lat])[0])
+          .attr("cy", (d) => projection([d.long, d.lat])[1])
+          .attr("r", 14)
+          .attr("class", "circle")
+          .style("fill", "69b3a2")
+          .attr("stroke", "#69b3a2")
+          .attr("stroke-width", 3)
+          .attr("fill-opacity", 0.4)
+          .on("mouseover", mouseover)
+          .on("mousemove", mousemove)
+          .on("mouseleave", mouseleave);
+      });
     </script>
   </body>
 </html>
